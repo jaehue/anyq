@@ -17,12 +17,26 @@ func main() {
 	}
 	fmt.Println("setup nsq: ", q)
 
+	// consume
 	recvCh := make(chan []byte, 100)
 	err = q.BindRecvChan(recvCh)
 	if err != nil {
 		panic(err)
 	}
-	for m := range recvCh {
-		fmt.Println(string(m))
+	go func() {
+		for m := range recvCh {
+			fmt.Println("[receive]", string(m))
+		}
+	}()
+
+	// produce
+	sendCh := make(chan []byte, 100)
+	err = q.BindSendChan(sendCh)
+
+	for i := 0; i < 100; i++ {
+		sendCh <- []byte(fmt.Sprintf("[%d]%s", i, "test message"))
 	}
+
+	c := make(chan struct{})
+	<-c
 }
