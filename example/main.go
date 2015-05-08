@@ -6,10 +6,20 @@ import (
 )
 
 func main() {
+	runKafka()
 	//runNsq()
-	runNats()
+	//runNats()
 	c := make(chan struct{})
 	<-c
+}
+
+func runKafka() {
+	q, err := qlib.Setup("kafka", "192.168.81.43:32771,192.168.81.43:32772,192.168.81.43:32773")
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("setup kafka: ", q)
+	runPubSub(q)
 }
 
 func runNats() {
