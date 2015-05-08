@@ -10,11 +10,11 @@ func init() {
 }
 
 type Nsq struct {
-	Url, ConsumeChannel string
+	url, ConsumeChannel string
 }
 
 func (q *Nsq) Setup(url string) error {
-	q.Url = url
+	q.url = url
 	return nil
 }
 
@@ -30,11 +30,11 @@ func (q *Nsq) BindRecvChan(topic string, recvCh chan<- []byte) error {
 		return nil
 	}), 1)
 
-	return c.ConnectToNSQD(q.Url)
+	return c.ConnectToNSQD(q.url)
 }
 
 func (q *Nsq) BindSendChan(topic string, sendCh <-chan []byte) error {
-	p, err := nsq.NewProducer(q.Url, nsq.NewConfig())
+	p, err := nsq.NewProducer(q.url, nsq.NewConfig())
 	if err != nil {
 		return err
 	}
