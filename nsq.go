@@ -10,15 +10,16 @@ func init() {
 }
 
 type Nsq struct {
-	Url, Topic, Channel string
+	Url, ConsumeChannel string
 }
 
-func (q *Nsq) Setup(url string) {
+func (q *Nsq) Setup(url string) error {
 	q.Url = url
+	return nil
 }
 
-func (q *Nsq) BindRecvChan(recvCh chan<- []byte) error {
-	c, err := nsq.NewConsumer(q.Topic, q.Channel, nsq.NewConfig())
+func (q *Nsq) BindRecvChan(topic string, recvCh chan<- []byte) error {
+	c, err := nsq.NewConsumer(topic, q.ConsumeChannel, nsq.NewConfig())
 	if err != nil {
 		return err
 	}
@@ -32,7 +33,7 @@ func (q *Nsq) BindRecvChan(recvCh chan<- []byte) error {
 	return c.ConnectToNSQD(q.Url)
 }
 
-func (q *Nsq) BindSendChan(sendCh <-chan []byte) error {
+func (q *Nsq) BindSendChan(topic string, sendCh <-chan []byte) error {
 	p, err := nsq.NewProducer(q.Url, nsq.NewConfig())
 	if err != nil {
 		return err
@@ -46,7 +47,7 @@ func (q *Nsq) BindSendChan(sendCh <-chan []byte) error {
 	go func() {
 		for body := range sendCh {
 			log.Println("send message: ", string(body))
-			p.PublishAsync(q.Topic, body, done)
+			p.PublishAsync(topic, body, done)
 		}
 	}()
 

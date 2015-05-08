@@ -5,13 +5,16 @@ import (
 	"github.com/jaehue/qlib"
 )
 
-func setupNsq(q *qlib.Nsq) {
-	q.Topic = "test"
-	q.Channel = "qlib_test"
+func main() {
+	runNsq()
+	c := make(chan struct{})
+	<-c
 }
 
-func main() {
-	q, err := qlib.Setup("nsq", "192.168.81.43:4150", setupNsq)
+func runNsq() {
+	q, err := qlib.Setup("nsq", "192.168.81.43:4150", func(q *qlib.Nsq) {
+		q.ConsumeChannel = "qlib"
+	})
 	if err != nil {
 		panic(err)
 	}
@@ -19,7 +22,7 @@ func main() {
 
 	// consume
 	recvCh := make(chan []byte, 100)
-	err = q.BindRecvChan(recvCh)
+	err = q.BindRecvChan("test", recvCh)
 	if err != nil {
 		panic(err)
 	}
@@ -31,12 +34,10 @@ func main() {
 
 	// produce
 	sendCh := make(chan []byte, 100)
-	err = q.BindSendChan(sendCh)
+	err = q.BindSendChan("test", sendCh)
 
 	for i := 0; i < 100; i++ {
 		sendCh <- []byte(fmt.Sprintf("[%d]%s", i, "test message"))
 	}
 
-	c := make(chan struct{})
-	<-c
 }

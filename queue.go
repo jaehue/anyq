@@ -8,17 +8,17 @@ import (
 var queues = make(map[string]Queuer)
 
 type Queuer interface {
-	Setup(string)
+	Setup(string) error
 	Consumer
 	Producer
 }
 
 type Consumer interface {
-	BindRecvChan(chan<- []byte) error
+	BindRecvChan(string, chan<- []byte) error
 }
 
 type Producer interface {
-	BindSendChan(<-chan []byte) error
+	BindSendChan(string, <-chan []byte) error
 }
 
 func Register(name string, q Queuer) {
@@ -37,7 +37,9 @@ func Setup(qname, url string, setupFn ...interface{}) (Queuer, error) {
 		return nil, fmt.Errorf("queue: unknown queue %q (forgotten import?)", qname)
 	}
 
-	q.Setup(url)
+	if err := q.Setup(url); err != nil {
+		return nil, err
+	}
 
 	for _, f := range setupFn {
 		fn := reflect.ValueOf(f)
