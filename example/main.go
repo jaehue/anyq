@@ -3,14 +3,76 @@ package main
 import (
 	"fmt"
 	"github.com/jaehue/qlib"
+	"log"
 )
 
 func main() {
-	runKafka()
+	runRabbitmq()
+	//runKafka()
 	//runNsq()
 	//runNats()
-	c := make(chan struct{})
-	<-c
+	<-make(chan struct{})
+}
+
+func runRabbitmq() {
+	var (
+		ex         = "test-exchange"
+		queueName  = "test"
+		bindingKey = "test-key"
+	)
+
+	q, err := qlib.Setup("rabbitmq", "amqp://guest:guest@localhost:5672/", func(q *qlib.Rabbitmq) {
+
+		if err := q.Qos(100, 0, false); err != nil {
+			log.Fatal(err)
+		}
+
+		log.Println("declaring Exchange ", ex)
+		if err := q.ExchangeDeclare(
+			ex,       // name of the exchange
+			"direct", // exchange type - direct|fanout|topic|x-custom
+			false,    // durable
+			false,    // delete when complete
+			false,    // internal
+			false,    // noWait
+			nil,      // arguments
+		); err != nil {
+			log.Fatal(err)
+		}
+		log.Println("declared Exchange, declaring Queue ", queueName)
+		queue, err := q.QueueDeclare(
+			queueName, // name of the queue
+			true,      // durable
+			false,     // delete when usused
+			false,     // exclusive
+			false,     // noWait
+			nil,       // arguments
+		)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		log.Printf("declared Queue (%q %d messages, %d consumers), binding to Exchange (key %q)\n",
+			queue.Name, queue.Messages, queue.Consumers, bindingKey)
+
+		if err := q.QueueBind(
+			queue.Name, // name of the queue
+			bindingKey, // bindingKey
+			ex,         // sourceExchange
+			false,      // noWait
+			nil,        // arguments
+		); err != nil {
+			log.Fatal(err)
+		}
+
+		log.Println("Queue bound to Exchange")
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("setup rabbitmq: ", q)
+	runPubSub(q)
 }
 
 func runKafka() {
@@ -58,8 +120,13 @@ func runPubSub(q qlib.Queuer) {
 	// produce
 	sendCh := make(chan []byte, 100)
 	err = q.BindSendChan("test", sendCh)
+	if err != nil {
+		panic(err)
+	}
 
 	for i := 0; i < 100; i++ {
-		sendCh <- []byte(fmt.Sprintf("[%d]%s", i, "test message"))
+		msg := fmt.Sprintf("[%d]%s", i, "test message")
+		fmt.Println("[send]", msg)
+		sendCh <- []byte(msg)
 	}
 }
