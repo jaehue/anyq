@@ -1,18 +1,19 @@
-package qlib
+package main
 
 import (
 	"fmt"
+	"github.com/jaehue/qlib"
 	"io/ioutil"
 	"log"
 	"testing"
 )
 
-func BenchmarkProduce(b *testing.B) {
+func BenchmarkNsqProduce(b *testing.B) {
 	b.StopTimer()
 
 	log.SetOutput(ioutil.Discard)
 
-	q, err := Setup("nsq", "192.168.81.43:4150", func(q *Nsq) {
+	q, err := qlib.Setup("nsq", "192.168.81.43:4150", func(q *qlib.Nsq) {
 		q.ConsumeChannel = "qlib"
 	})
 	if err != nil {
@@ -34,12 +35,12 @@ func BenchmarkProduce(b *testing.B) {
 	}
 }
 
-func BenchmarkConsume(b *testing.B) {
+func BenchmarkNsqConsume(b *testing.B) {
 	b.StopTimer()
 
 	log.SetOutput(ioutil.Discard)
 
-	q, err := Setup("nsq", "192.168.81.43:4150", func(q *Nsq) {
+	q, err := qlib.Setup("nsq", "192.168.81.43:4150", func(q *qlib.Nsq) {
 		q.ConsumeChannel = "qlib"
 	})
 	if err != nil {
