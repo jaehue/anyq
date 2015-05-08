@@ -2,9 +2,24 @@ package qlib
 
 import (
 	"fmt"
+	"reflect"
 )
 
 var queues = make(map[string]Queuer)
+
+type Queuer interface {
+	Setup(string)
+	Consumer
+	Producer
+}
+
+type Consumer interface {
+	BindRecvChan(chan<- []byte) error
+}
+
+type Producer interface {
+	BindSendChan(<-chan []byte) error
+}
 
 func Register(name string, q Queuer) {
 	if q == nil {
@@ -16,27 +31,18 @@ func Register(name string, q Queuer) {
 	queues[name] = q
 }
 
-func Setup(qname, url string, options ...func(interface{}) interface{}) (Queuer, error) {
+func Setup(qname, url string, setupFn ...interface{}) (Queuer, error) {
 	q, ok := queues[qname]
 	if !ok {
 		return nil, fmt.Errorf("queue: unknown queue %q (forgotten import?)", qname)
 	}
-	fmt.Println("setup before ", q)
-	q.Setup(url, options...)
-	fmt.Println("setup complete ", q)
+
+	q.Setup(url)
+
+	for _, f := range setupFn {
+		fn := reflect.ValueOf(f)
+		fn.Call([]reflect.Value{reflect.ValueOf(q)})
+	}
+
 	return q, nil
-}
-
-type Queuer interface {
-	Setup(string, ...func(interface{}) interface{})
-	Consumer
-	Producer
-}
-
-type Consumer interface {
-	BindRecvChan(chan<- []byte) error
-}
-
-type Producer interface {
-	BindSendChan(<-chan []byte) error
 }

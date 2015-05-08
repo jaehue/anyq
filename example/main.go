@@ -5,19 +5,9 @@ import (
 	"github.com/jaehue/qlib"
 )
 
-func setupNsq(q interface{}) interface{} {
-	v, ok := q.(qlib.Nsq)
-	if ok {
-		fmt.Println("return")
-		return nil
-	}
-
-	nsq := v
-
-	nsq.Topic = "test"
-	nsq.Channel = "qlib_test"
-	fmt.Println("nsq", nsq)
-	return &nsq
+func setupNsq(q *qlib.Nsq) {
+	q.Topic = "test"
+	q.Channel = "qlib_test"
 }
 
 func main() {
@@ -25,7 +15,8 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println("new queue ", q)
+	fmt.Println("setup nsq: ", q)
+
 	recvCh := make(chan []byte, 100)
 	err = q.BindRecvChan(recvCh)
 	if err != nil {
