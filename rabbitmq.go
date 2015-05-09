@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/streadway/amqp"
 	"log"
+	"reflect"
 )
 
 func init() {
@@ -12,6 +13,20 @@ func init() {
 
 type Rabbitmq struct {
 	*amqp.Channel
+}
+
+type RabbitmqConsumeArgs struct {
+	Queue                               string `validate:"nonzero"`
+	Consumer                            string
+	AutoAck, Exclusive, NoLocal, NoWait bool
+	Args                                map[string]interface{}
+}
+
+type RabbitmqProduceArgs struct {
+	Exchange             string          `validate:"nonzero"`
+	RoutingKey           string          `validate:"nonzero"`
+	Msg                  amqp.Publishing `validate:"nonzero"`
+	Mandatory, Immediate bool
 }
 
 func (q *Rabbitmq) Setup(url string) error {
@@ -33,21 +48,18 @@ func (q *Rabbitmq) Setup(url string) error {
 	return nil
 }
 
-func (q *Rabbitmq) BindRecvChan(qname string, recvCh chan<- []byte) error {
-	log.Println("starting consume")
-	deliveries, err := q.Consume(
-		qname, // name
-		"",    // consumerTag,
-		false, // noAck
-		false, // exclusive
-		false, // noLocal
-		false, // noWait
-		nil,   // arguments
-	)
+func (q *Rabbitmq) BindRecvChan(recvCh chan<- []byte, args interface{}) error {
+	c, ok := args.(RabbitmqConsumeArgs)
+	if !ok {
+		return fmt.Errorf("invalid consume arguments(%v)", args)
+	}
+
+	deliveries, err := q.Consume(c.Queue, c.Consumer, c.AutoAck, c.Exclusive, c.NoLocal, c.NoWait, c.Args)
 	if err != nil {
 		return err
 	}
 
+	log.Println("starting consume")
 	go func() {
 
 		for d := range deliveries {
@@ -58,7 +70,22 @@ func (q *Rabbitmq) BindRecvChan(qname string, recvCh chan<- []byte) error {
 	return nil
 }
 
-func (q *Rabbitmq) BindSendChan(topic string, sendCh <-chan []byte) error {
+func (q *Rabbitmq) BindSendChan(sendCh <-chan []byte, args interface{}) error {
+	p, ok := args.(RabbitmqProduceArgs)
+	if !ok {
+		return fmt.Errorf("invalid produce arguments(%v)", args)
+	}
+
+	if reflect.DeepEqual(p.Msg, amqp.Publishing{}) {
+		p.Msg = amqp.Publishing{
+			Headers:         amqp.Table{},
+			ContentType:     "text/plain",
+			ContentEncoding: "",
+			DeliveryMode:    amqp.Transient, // 1=non-persistent, 2=persistent
+			Priority:        0,              // 0-9
+		}
+	}
+
 	// Reliable publisher confirms require confirm.select support from the
 	// connection.
 	log.Printf("enabling publishing confirms.")
@@ -71,21 +98,8 @@ func (q *Rabbitmq) BindSendChan(topic string, sendCh <-chan []byte) error {
 	// defer confirmOne(ack, nack)
 	go func() {
 		for body := range sendCh {
-			if err := q.Publish(
-				"test-exchange", // publish to an exchange
-				"test-key",      // routing to 0 or more queues
-				false,           // mandatory
-				false,           // immediate
-				amqp.Publishing{
-					Headers:         amqp.Table{},
-					ContentType:     "text/plain",
-					ContentEncoding: "",
-					Body:            []byte(body),
-					DeliveryMode:    amqp.Transient, // 1=non-persistent, 2=persistent
-					Priority:        0,              // 0-9
-					// a bunch of application/implementation-specific fields
-				},
-			); err != nil {
+			p.Msg.Body = body
+			if err := q.Publish(p.Exchange, p.RoutingKey, p.Mandatory, p.Immediate, p.Msg); err != nil {
 				log.Fatalf("Exchange Publish: %s", err)
 			}
 		}
