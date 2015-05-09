@@ -14,11 +14,11 @@ type Queuer interface {
 }
 
 type Consumer interface {
-	BindRecvChan(string, chan<- []byte) error
+	BindRecvChan(chan<- []byte, interface{}) error
 }
 
 type Producer interface {
-	BindSendChan(string, <-chan []byte) error
+	BindSendChan(<-chan []byte, interface{}) error
 }
 
 func Register(name string, q Queuer) {
