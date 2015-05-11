@@ -7,6 +7,17 @@ import (
 	"testing"
 )
 
+func BenchmarkNsqPubsub(b *testing.B) {
+	log.SetOutput(ioutil.Discard)
+
+	q, err := qlib.Setup("nsq", "192.168.81.43:4150")
+	if err != nil {
+		b.Error(err)
+	}
+
+	pubsubBenchmark(b, q, qlib.NsqProduceArgs{Topic: "test"}, qlib.NsqConsumeArgs{Topic: "test", Channel: "qlib"})
+}
+
 func BenchmarkNsqProduce(b *testing.B) {
 	log.SetOutput(ioutil.Discard)
 
