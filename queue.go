@@ -2,6 +2,9 @@ package qlib
 
 import (
 	"fmt"
+	"log"
+	"os"
+	"os/signal"
 	"reflect"
 )
 
@@ -9,6 +12,9 @@ var queues = make(map[string]Queuer)
 
 type Queuer interface {
 	Setup(string) error
+	cleanup() error
+	Quit() <-chan struct{}
+
 	Consumer
 	Producer
 }
@@ -46,5 +52,21 @@ func Setup(qname, url string, setupFn ...interface{}) (Queuer, error) {
 		fn.Call([]reflect.Value{reflect.ValueOf(q)})
 	}
 
+	go func() {
+		signals := make(chan os.Signal, 1)
+		signal.Notify(signals, os.Interrupt)
+
+		<-signals
+		log.Print("cleaning... ")
+		if err := q.cleanup(); err != nil {
+			log.Fatalln("cleaning error: ", err)
+		} else {
+
+			log.Println("clean complate")
+		}
+		os.Exit(0)
+	}()
+
 	return q, nil
+
 }
