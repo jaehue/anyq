@@ -2,11 +2,13 @@ package qlib
 
 import (
 	"fmt"
-	"github.com/Shopify/sarama"
+	"github.com/wvanbergen/kafka/consumergroup"
+	"gopkg.in/Shopify/sarama.v1"
 	"log"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 func init() {
@@ -25,8 +27,8 @@ type KafkaConsumeArgs struct {
 	Topic      string `validate:"nonzero"`
 	Partitions string // The partitions to consume, can be 'all' or comma-separated numbers
 	Offset     string `validate:"regexp=^(oldest|newest)$"`
-	Verbose    bool
-	BufferSize int
+	Zookeeper  string
+	Group      string
 }
 
 type KafkaProduceArgs struct {
@@ -34,14 +36,12 @@ type KafkaProduceArgs struct {
 	Key         string
 	Partitioner string `validate:"regexp=^(hash|manual|random)$"` // The partitioning scheme to usep
 	Partition   int    // The partition to produce to
-	Verbose     bool
-	Silent      bool
 	Sync        bool
 }
 
 func (q *Kafka) Setup(url string) error {
 	q.brokers = strings.Split(url, ",")
-	q.quit = make(chan struct{})
+	q.quit = make(chan struct{}, 1)
 	return nil
 }
 
@@ -64,32 +64,19 @@ func (q *Kafka) Cleanup() error {
 	return nil
 }
 
-func (q *Kafka) BindRecvChan(ch chan<- []byte, args interface{}) error {
-	consumeArgs, ok := args.(KafkaConsumeArgs)
-	if !ok {
-		return fmt.Errorf("invalid consume arguments(%v)", args)
-	}
+type kafkaAbstractConsumer interface {
+	Close() error
+	Messages() <-chan *sarama.ConsumerMessage
+	Errors() <-chan *sarama.ConsumerError
+}
 
-	c, err := sarama.NewConsumer(q.brokers, sarama.NewConfig())
-	if err != nil {
-		return err
-	}
+type kafkaAbstractConsumers []kafkaAbstractConsumer
 
-	partitions, err := consumeArgs.getPartitions(c)
-	if err != nil {
-		return err
-	}
-
+func (cs kafkaAbstractConsumers) bindRecvChan(q *Kafka, ch chan<- []byte) {
 	var wg sync.WaitGroup
-
-	for _, p := range partitions {
-		pc, err := c.ConsumePartition(consumeArgs.Topic, p, consumeArgs.getOffset())
-		if err != nil {
-			return err
-		}
-
+	for _, c := range cs {
 		wg.Add(1)
-		go func(pc sarama.PartitionConsumer) {
+		go func(c kafkaAbstractConsumer) {
 			defer wg.Done()
 
 			quit := make(chan struct{})
@@ -98,28 +85,82 @@ func (q *Kafka) BindRecvChan(ch chan<- []byte, args interface{}) error {
 		consumeLoop:
 			for {
 				select {
-				case err := <-pc.Errors():
+				case err := <-c.Errors():
 					log.Println(err)
-				case m := <-pc.Messages():
+				case m := <-c.Messages():
 					ch <- m.Value
 				case <-quit:
-					pc.Close()
+					c.Close()
 					break consumeLoop
 				}
 			}
-		}(pc)
+		}(c)
 	}
 
 	go func() {
 		wg.Wait()
 		close(ch)
-		if err := c.Close(); err != nil {
-			log.Fatalln("Failed to close consumer: ", err)
-			return
-		}
 		log.Println("consumer closed.")
-		q.quitWg.Done()
 	}()
+}
+
+func (q *Kafka) BindRecvChan(ch chan<- []byte, args interface{}) error {
+	consumeArgs, ok := args.(KafkaConsumeArgs)
+	if !ok {
+		return fmt.Errorf("invalid consume arguments(%v)", args)
+	}
+
+	var consumers kafkaAbstractConsumers
+
+	if consumeArgs.Group != "" {
+		config := consumergroup.NewConfig()
+		config.Offsets.Initial = consumeArgs.getOffset()
+		config.Offsets.ProcessingTimeout = 10 * time.Second
+
+		c, err := consumergroup.JoinConsumerGroup(consumeArgs.Group, []string{consumeArgs.Topic}, strings.Split(consumeArgs.Zookeeper, ","), config)
+		if err != nil {
+			return err
+		}
+
+		consumers = []kafkaAbstractConsumer{c}
+
+	} else {
+		c, err := sarama.NewConsumer(q.brokers, sarama.NewConfig())
+		if err != nil {
+			return err
+		}
+
+		quit := make(chan struct{})
+		q.quits = append(q.quits, quit)
+
+		go func() {
+			<-quit
+			if err := c.Close(); err != nil {
+				log.Fatalln(err)
+			}
+		}()
+		partitions, err := consumeArgs.getPartitions(c)
+		if err != nil {
+			return err
+		}
+
+		for _, p := range partitions {
+			pc, err := c.ConsumePartition(consumeArgs.Topic, p, consumeArgs.getOffset())
+			if err != nil {
+				return err
+			}
+			consumers = append(consumers, pc)
+		}
+	}
+
+	consumers.bindRecvChan(q, ch)
+
+	// if err := c.Close(); err != nil {
+	// 	log.Fatalln("Failed to close consumer: ", err)
+	// 	return
+	// }
+	//log.Println("consumer closed.")
+	//q.quitWg.Done()
 	return nil
 
 }
