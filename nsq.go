@@ -30,7 +30,7 @@ func (q *Nsq) Setup(url string) error {
 	return nil
 }
 
-func (q *Nsq) cleanup() error {
+func (q *Nsq) Cleanup() error {
 	defer func() {
 		log.Printf("NSQ shutdown OK")
 		q.quit <- struct{}{}
@@ -78,7 +78,7 @@ func (q *Nsq) BindRecvChan(recvCh chan<- []byte, args interface{}) error {
 func (q *Nsq) BindSendChan(sendCh <-chan []byte, v interface{}) error {
 	args, ok := v.(NsqProduceArgs)
 	if !ok {
-		return fmt.Errorf("invalid consume arguments(%v)", v)
+		return fmt.Errorf("invalid consume arguments(%T)", v)
 	}
 
 	p, err := nsq.NewProducer(q.url, nsq.NewConfig())

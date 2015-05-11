@@ -12,7 +12,7 @@ var queues = make(map[string]Queuer)
 
 type Queuer interface {
 	Setup(string) error
-	cleanup() error
+	Cleanup() error
 	Quit() <-chan struct{}
 
 	Consumer
@@ -25,6 +25,10 @@ type Consumer interface {
 
 type Producer interface {
 	BindSendChan(<-chan []byte, interface{}) error
+}
+
+type closer interface {
+	Close()
 }
 
 func Register(name string, q Queuer) {
@@ -58,7 +62,7 @@ func Setup(qname, url string, setupFn ...interface{}) (Queuer, error) {
 
 		<-signals
 		log.Print("cleaning... ")
-		if err := q.cleanup(); err != nil {
+		if err := q.Cleanup(); err != nil {
 			log.Fatalln("cleaning error: ", err)
 		} else {
 

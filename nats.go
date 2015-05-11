@@ -43,7 +43,7 @@ func (q *Nats) Setup(url string) error {
 	return nil
 }
 
-func (q *Nats) cleanup() error {
+func (q *Nats) Cleanup() error {
 	defer func() {
 		log.Printf("NATS shutdown OK")
 		q.quit <- struct{}{}

@@ -54,7 +54,7 @@ func (q *Rabbitmq) Setup(url string) error {
 	return nil
 }
 
-func (q *Rabbitmq) cleanup() error {
+func (q *Rabbitmq) Cleanup() error {
 	defer func() {
 		log.Printf("Rabbitmq shutdown OK")
 		q.quit <- struct{}{}

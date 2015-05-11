@@ -49,7 +49,7 @@ func (q *Kafka) Quit() <-chan struct{} {
 	return q.quit
 }
 
-func (q *Kafka) cleanup() error {
+func (q *Kafka) Cleanup() error {
 	defer func() {
 		log.Printf("Kafka shutdown OK")
 		q.quit <- struct{}{}
