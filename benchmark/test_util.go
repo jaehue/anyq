@@ -6,9 +6,9 @@ import (
 	"testing"
 )
 
-func consumeBenchmark(q qlib.Queuer, b *testing.B) {
+func produceBenchmark(b *testing.B, q qlib.Queuer, args interface{}) {
 	sendCh := make(chan []byte, 100)
-	err := q.BindSendChan("test", sendCh)
+	err := q.BindSendChan(sendCh, args)
 	if err != nil {
 		b.Error(err)
 	}
@@ -22,9 +22,9 @@ func consumeBenchmark(q qlib.Queuer, b *testing.B) {
 	}
 }
 
-func produceBenchmark(q qlib.Queuer, b *testing.B) {
+func consumeBenchmark(b *testing.B, q qlib.Queuer, args interface{}) {
 	recvCh := make(chan []byte, 100)
-	err := q.BindRecvChan("test", recvCh)
+	err := q.BindRecvChan(recvCh, args)
 	if err != nil {
 		b.Error(err)
 	}

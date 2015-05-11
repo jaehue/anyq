@@ -10,23 +10,19 @@ import (
 func BenchmarkNsqProduce(b *testing.B) {
 	log.SetOutput(ioutil.Discard)
 
-	q, err := qlib.Setup("nsq", "192.168.81.43:4150", func(q *qlib.Nsq) {
-		q.ConsumeChannel = "qlib"
-	})
+	q, err := qlib.Setup("nsq", "192.168.81.43:4150")
 	if err != nil {
 		b.Error(err)
 	}
-	consumeBenchmark(q, b)
+	produceBenchmark(b, q, qlib.NsqProduceArgs{Topic: "test"})
 }
 
 func BenchmarkNsqConsume(b *testing.B) {
 	log.SetOutput(ioutil.Discard)
 
-	q, err := qlib.Setup("nsq", "192.168.81.43:4150", func(q *qlib.Nsq) {
-		q.ConsumeChannel = "qlib"
-	})
+	q, err := qlib.Setup("nsq", "192.168.81.43:4150")
 	if err != nil {
 		b.Error(err)
 	}
-	produceBenchmark(q, b)
+	consumeBenchmark(b, q, qlib.NsqConsumeArgs{Topic: "test", Channel: "qlib"})
 }

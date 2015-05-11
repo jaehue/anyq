@@ -15,7 +15,7 @@ func BenchmarkKafkaProduce(b *testing.B) {
 		b.Error(err)
 	}
 
-	consumeBenchmark(q, b)
+	produceBenchmark(b, q, qlib.KafkaProduceArgs{Topic: "test"})
 }
 
 func BenchmarkKafkaConsume(b *testing.B) {
@@ -26,5 +26,5 @@ func BenchmarkKafkaConsume(b *testing.B) {
 		b.Error(err)
 	}
 
-	produceBenchmark(q, b)
+	consumeBenchmark(b, q, qlib.KafkaConsumeArgs{Topic: "test", Partitions: "all"})
 }

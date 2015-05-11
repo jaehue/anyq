@@ -14,7 +14,7 @@ func BenchmarkNatsProduce(b *testing.B) {
 	if err != nil {
 		b.Error(err)
 	}
-	consumeBenchmark(q, b)
+	produceBenchmark(b, q, qlib.NatsProduceArgs{Subject: "test"})
 }
 
 func BenchmarkNatsConsume(b *testing.B) {
@@ -24,5 +24,5 @@ func BenchmarkNatsConsume(b *testing.B) {
 	if err != nil {
 		b.Error(err)
 	}
-	produceBenchmark(q, b)
+	consumeBenchmark(b, q, qlib.NatsConsumeArgs{Subject: "test"})
 }
