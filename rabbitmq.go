@@ -13,6 +13,9 @@ func init() {
 
 type Rabbitmq struct {
 	*amqp.Channel
+	consumerTag string
+	conn        *amqp.Connection
+	quit        chan struct{}
 }
 
 type RabbitmqConsumeArgs struct {
@@ -35,6 +38,7 @@ func (q *Rabbitmq) Setup(url string) error {
 	if err != nil {
 		return err
 	}
+	q.conn = conn
 
 	log.Println("got Connection, getting Channel")
 	ch, err := conn.Channel()
@@ -45,7 +49,30 @@ func (q *Rabbitmq) Setup(url string) error {
 	log.Println("got Channel")
 	q.Channel = ch
 
+	q.quit = make(chan struct{})
+
 	return nil
+}
+
+func (q *Rabbitmq) cleanup() error {
+	defer func() {
+		log.Printf("Rabbitmq shutdown OK")
+		q.quit <- struct{}{}
+	}()
+
+	if err := q.Cancel(q.consumerTag, true); err != nil {
+		return fmt.Errorf("Consumer cancel failed: %s", err)
+	}
+
+	if err := q.conn.Close(); err != nil {
+		return fmt.Errorf("AMQP connection close error: %s", err)
+	}
+
+	return nil
+}
+
+func (q *Rabbitmq) Quit() <-chan struct{} {
+	return q.quit
 }
 
 func (q *Rabbitmq) BindRecvChan(recvCh chan<- []byte, args interface{}) error {
