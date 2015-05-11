@@ -49,7 +49,7 @@ func (q *Rabbitmq) Setup(url string) error {
 	log.Println("got Channel")
 	q.Channel = ch
 
-	q.quit = make(chan struct{})
+	q.quit = make(chan struct{}, 1)
 
 	return nil
 }
@@ -91,6 +91,7 @@ func (q *Rabbitmq) BindRecvChan(recvCh chan<- []byte, args interface{}) error {
 
 		for d := range deliveries {
 			recvCh <- d.Body
+			d.Ack(false)
 		}
 	}()
 
