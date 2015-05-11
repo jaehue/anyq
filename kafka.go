@@ -15,7 +15,6 @@ func init() {
 
 type Kafka struct {
 	brokers []string // The comma separated list of brokers in the Kafka cluster
-	*sarama.Config
 
 	quitWg sync.WaitGroup
 	quits  []chan struct{}
@@ -42,7 +41,6 @@ type KafkaProduceArgs struct {
 
 func (q *Kafka) Setup(url string) error {
 	q.brokers = strings.Split(url, ",")
-	q.Config = sarama.NewConfig()
 	q.quit = make(chan struct{})
 	return nil
 }
@@ -72,7 +70,7 @@ func (q *Kafka) BindRecvChan(ch chan<- []byte, args interface{}) error {
 		return fmt.Errorf("invalid consume arguments(%v)", args)
 	}
 
-	c, err := sarama.NewConsumer(q.brokers, q.Config)
+	c, err := sarama.NewConsumer(q.brokers, sarama.NewConfig())
 	if err != nil {
 		return err
 	}
@@ -132,14 +130,15 @@ func (q *Kafka) BindSendChan(ch <-chan []byte, args interface{}) error {
 		return fmt.Errorf("invalid consume arguments(%v)", args)
 	}
 
+	config := sarama.NewConfig()
 	// set partitioner
 	if partitioner, err := produceArgs.getPartitioner(); err == nil {
-		q.Config.Producer.Partitioner = partitioner
+		config.Producer.Partitioner = partitioner
 	}
 
 	if produceArgs.Sync {
-		q.Config.Producer.RequiredAcks = sarama.WaitForAll
-		producer, err := sarama.NewSyncProducer(q.brokers, q.Config)
+		config.Producer.RequiredAcks = sarama.WaitForAll
+		producer, err := sarama.NewSyncProducer(q.brokers, config)
 		if err != nil {
 			return fmt.Errorf("Failed to open Kafka producer: %s", err)
 		}
@@ -165,7 +164,7 @@ func (q *Kafka) BindSendChan(ch <-chan []byte, args interface{}) error {
 					if err != nil {
 						log.Fatalf("[Error]%v\n", err)
 					}
-					fmt.Printf("[sent]topic=%s\tpartition=%d\toffset=%d\n", produceArgs.Topic, partition, offset)
+					log.Printf("[sent]topic=%s\tpartition=%d\toffset=%d\n", produceArgs.Topic, partition, offset)
 				}
 			}
 
@@ -176,7 +175,7 @@ func (q *Kafka) BindSendChan(ch <-chan []byte, args interface{}) error {
 		}()
 
 	} else {
-		asyncproducer, err := sarama.NewAsyncProducer(q.brokers, q.Config)
+		asyncproducer, err := sarama.NewAsyncProducer(q.brokers, config)
 		if err != nil {
 			return fmt.Errorf("Failed to open Kafka producer: %s", err)
 		}
