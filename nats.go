@@ -13,17 +13,55 @@ func init() {
 
 type Nats struct {
 	*nats.Conn
-
-	quits []chan struct{}
-	quit  chan struct{}
 }
 
-type NatsConsumeArgs struct {
+type NatsConsumerArgs struct {
 	Subject string
 }
 
-type NatsProduceArgs struct {
+type NatsProducerArgs struct {
 	Subject string
+}
+
+type natsConsumer struct {
+	*nats.Conn
+	subject string
+}
+
+type natsProducer struct {
+	*nats.Conn
+	subject string
+}
+
+func (c *natsConsumer) BindRecvChan(messages chan<- *Message) error {
+	s, err := c.Conn.Subscribe(c.subject, func(m *nats.Msg) {
+		log.Println("receive message: ", string(m.Data))
+		messages <- &Message{Body: m.Data, Origin: m}
+	})
+	if err != nil {
+		return err
+	}
+	log.Println("start consume: ", s.Subject)
+	return nil
+}
+
+func (c *natsConsumer) Close() error {
+	return nil
+}
+
+func (p *natsProducer) BindSendChan(messages <-chan []byte) error {
+	go func() {
+		for {
+			for body := range messages {
+				p.Conn.Publish(p.subject, body)
+			}
+		}
+	}()
+	return nil
+}
+
+func (p *natsProducer) Close() error {
+	return nil
 }
 
 func (q *Nats) Setup(url string) error {
@@ -37,58 +75,28 @@ func (q *Nats) Setup(url string) error {
 		return err
 	}
 	q.Conn = nc
-
-	q.quit = make(chan struct{})
-
 	return nil
 }
 
-func (q *Nats) Cleanup() error {
-	defer func() {
-		log.Printf("NATS shutdown OK")
-		q.quit <- struct{}{}
-	}()
-
-	for _, quit := range q.quits {
-		quit <- struct{}{}
-	}
-
+func (q *Nats) Close() error {
+	q.Conn.Close()
+	log.Printf("NATS shutdown OK")
 	return nil
 }
 
-func (q *Nats) Quit() <-chan struct{} {
-	return q.quit
-}
-
-func (q *Nats) BindRecvChan(ch chan<- []byte, v interface{}) error {
-	args, ok := v.(NatsConsumeArgs)
+func (q *Nats) NewConsumer(v interface{}) (Consumer, error) {
+	args, ok := v.(NatsConsumerArgs)
 	if !ok {
-		return fmt.Errorf("invalid consume arguments(%v)", v)
+		return nil, fmt.Errorf("invalid consume arguments(%v)", v)
 	}
 
-	s, err := q.Subscribe(args.Subject, func(m *nats.Msg) {
-		log.Println("receive message: ", string(m.Data))
-		ch <- m.Data
-	})
-	if err != nil {
-		return err
-	}
-	log.Println("start consume: ", s.Subject)
-	return nil
+	return &natsConsumer{q.Conn, args.Subject}, nil
 }
 
-func (q *Nats) BindSendChan(ch <-chan []byte, v interface{}) error {
-	args, ok := v.(NatsProduceArgs)
+func (q *Nats) NewProducer(v interface{}) (Producer, error) {
+	args, ok := v.(NatsProducerArgs)
 	if !ok {
-		return fmt.Errorf("invalid consume arguments(%v)", v)
+		return nil, fmt.Errorf("invalid consume arguments(%v)", v)
 	}
-
-	go func() {
-		for {
-			for body := range ch {
-				q.Publish(args.Subject, body)
-			}
-		}
-	}()
-	return nil
+	return &natsProducer{q.Conn, args.Subject}, nil
 }
