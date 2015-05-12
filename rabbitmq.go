@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/streadway/amqp"
 	"log"
-	"reflect"
 )
 
 func init() {
@@ -13,23 +12,34 @@ func init() {
 
 type Rabbitmq struct {
 	*amqp.Channel
-	consumerTag string
-	conn        *amqp.Connection
-	quit        chan struct{}
+	conn    *amqp.Connection
+	closers []closer
 }
 
-type RabbitmqConsumeArgs struct {
+type RabbitmqConsumerArgs struct {
 	Queue                               string `validate:"nonzero"`
-	Consumer                            string
+	RoutingKey                          string
+	Exchange                            string
+	ConsumerTag                         string
 	AutoAck, Exclusive, NoLocal, NoWait bool
 	Args                                map[string]interface{}
 }
 
-type RabbitmqProduceArgs struct {
-	Exchange             string          `validate:"nonzero"`
-	RoutingKey           string          `validate:"nonzero"`
-	Msg                  amqp.Publishing `validate:"nonzero"`
+type RabbitmqProducerArgs struct {
+	Exchange             string `validate:"nonzero"`
+	RoutingKey           string `validate:"nonzero"`
 	Mandatory, Immediate bool
+	DeliveryMode         uint8
+}
+
+type rabbitmqConsumer struct {
+	channel *amqp.Channel
+	args    *RabbitmqConsumerArgs
+}
+
+type rabbitmqProducer struct {
+	channel *amqp.Channel
+	args    *RabbitmqProducerArgs
 }
 
 func (q *Rabbitmq) Setup(url string) error {
@@ -49,85 +59,93 @@ func (q *Rabbitmq) Setup(url string) error {
 	log.Println("got Channel")
 	q.Channel = ch
 
-	q.quit = make(chan struct{}, 1)
-
 	return nil
 }
 
-func (q *Rabbitmq) Cleanup() error {
-	defer func() {
-		log.Printf("Rabbitmq shutdown OK")
-		q.quit <- struct{}{}
-	}()
+func (q *Rabbitmq) Close() error {
+	for _, c := range q.closers {
+		c.Close()
+	}
 
-	if err := q.Cancel(q.consumerTag, true); err != nil {
-		return fmt.Errorf("Consumer cancel failed: %s", err)
+	if err := q.Channel.Close(); err != nil {
+		return fmt.Errorf("AMQP channel close error: %s", err)
 	}
 
 	if err := q.conn.Close(); err != nil {
 		return fmt.Errorf("AMQP connection close error: %s", err)
 	}
 
+	log.Printf("Rabbitmq shutdown OK")
+
 	return nil
 }
 
-func (q *Rabbitmq) Quit() <-chan struct{} {
-	return q.quit
-}
-
-func (q *Rabbitmq) BindRecvChan(recvCh chan<- []byte, args interface{}) error {
-	c, ok := args.(RabbitmqConsumeArgs)
+func (q *Rabbitmq) NewConsumer(v interface{}) (Consumer, error) {
+	args, ok := v.(RabbitmqConsumerArgs)
 	if !ok {
-		return fmt.Errorf("invalid consume arguments(%v)", args)
+		return nil, fmt.Errorf("invalid consumer arguments(%v)", v)
 	}
 
-	deliveries, err := q.Consume(c.Queue, c.Consumer, c.AutoAck, c.Exclusive, c.NoLocal, c.NoWait, c.Args)
+	log.Println("declaring Queue: ", args.Queue)
+	mq, err := q.QueueDeclare(args.Queue, true, false, false, false, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("declared Queue (%q %d messages, %d consumers)\n", mq.Name, mq.Messages, mq.Consumers)
+
+	log.Printf("binding to Exchange (key %q)\n", args.RoutingKey)
+	if err := q.QueueBind(mq.Name, args.RoutingKey, args.Exchange, false, nil); err != nil {
+		log.Fatal(err)
+	}
+	log.Println("Queue bound to Exchange")
+
+	c := &rabbitmqConsumer{q.Channel, &args}
+	q.closers = append(q.closers, c)
+	return c, nil
+}
+
+func (q *Rabbitmq) NewProducer(v interface{}) (Producer, error) {
+	args, ok := v.(RabbitmqProducerArgs)
+	if !ok {
+		return nil, fmt.Errorf("invalid produce arguments(%v)", v)
+	}
+
+	p := &rabbitmqProducer{q.Channel, &args}
+	q.closers = append(q.closers, p)
+	return p, nil
+}
+
+func (c *rabbitmqConsumer) BindRecvChan(messages chan<- *Message) error {
+	deliveries, err := c.channel.Consume(c.args.Queue, c.args.ConsumerTag, c.args.AutoAck, c.args.Exclusive, c.args.NoLocal, c.args.NoWait, c.args.Args)
 	if err != nil {
 		return err
 	}
 
-	log.Println("starting consume")
 	go func() {
-
 		for d := range deliveries {
-			recvCh <- d.Body
-			d.Ack(false)
+			messages <- &Message{Body: d.Body, Origin: d}
 		}
 	}()
-
 	return nil
 }
 
-func (q *Rabbitmq) BindSendChan(sendCh <-chan []byte, args interface{}) error {
-	p, ok := args.(RabbitmqProduceArgs)
-	if !ok {
-		return fmt.Errorf("invalid produce arguments(%v)", args)
+func (c *rabbitmqConsumer) Close() error {
+	if err := c.channel.Cancel(c.args.ConsumerTag, true); err != nil {
+		return fmt.Errorf("Consumer cancel failed: %s", err)
 	}
+	return nil
+}
 
-	if reflect.DeepEqual(p.Msg, amqp.Publishing{}) {
-		p.Msg = amqp.Publishing{
-			Headers:         amqp.Table{},
-			ContentType:     "text/plain",
-			ContentEncoding: "",
-			DeliveryMode:    amqp.Transient, // 1=non-persistent, 2=persistent
-			Priority:        0,              // 0-9
-		}
-	}
-
-	// Reliable publisher confirms require confirm.select support from the
-	// connection.
-	log.Printf("enabling publishing confirms.")
-	if err := q.Confirm(false); err != nil {
+func (p *rabbitmqProducer) BindSendChan(messages <-chan []byte) error {
+	if err := p.channel.Confirm(false); err != nil {
 		return fmt.Errorf("Channel could not be put into confirm mode: %s", err)
 	}
 
-	// ack, nack := q.NotifyConfirm(make(chan uint64, 1), make(chan uint64, 1))
-
-	// defer confirmOne(ack, nack)
 	go func() {
-		for body := range sendCh {
-			p.Msg.Body = body
-			if err := q.Publish(p.Exchange, p.RoutingKey, p.Mandatory, p.Immediate, p.Msg); err != nil {
+		msg := amqp.Publishing{DeliveryMode: p.args.DeliveryMode}
+		for m := range messages {
+			msg.Body = m
+			if err := p.channel.Publish(p.args.Exchange, p.args.RoutingKey, p.args.Mandatory, p.args.Immediate, msg); err != nil {
 				log.Fatalf("Exchange Publish: %s", err)
 			}
 		}
@@ -135,13 +153,6 @@ func (q *Rabbitmq) BindSendChan(sendCh <-chan []byte, args interface{}) error {
 	return nil
 }
 
-func confirmOne(ack, nack chan uint64) {
-	log.Printf("waiting for confirmation of one publishing")
-
-	select {
-	case tag := <-ack:
-		log.Printf("confirmed delivery with delivery tag: %d", tag)
-	case tag := <-nack:
-		log.Printf("failed delivery of delivery tag: %d", tag)
-	}
+func (p *rabbitmqProducer) Close() error {
+	return nil
 }
