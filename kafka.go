@@ -56,7 +56,6 @@ func (q *Kafka) Cleanup() error {
 	}()
 
 	for _, quit := range q.quits {
-		q.quitWg.Add(1)
 		quit <- struct{}{}
 	}
 
@@ -73,14 +72,15 @@ type kafkaAbstractConsumer interface {
 type kafkaAbstractConsumers []kafkaAbstractConsumer
 
 func (cs kafkaAbstractConsumers) bindRecvChan(q *Kafka, ch chan<- []byte) {
-	var wg sync.WaitGroup
+	done := make(chan struct{}, len(cs))
 	for _, c := range cs {
-		wg.Add(1)
 		go func(c kafkaAbstractConsumer) {
-			defer wg.Done()
 
 			quit := make(chan struct{})
 			q.quits = append(q.quits, quit)
+
+			q.quitWg.Add(1)
+			defer q.quitWg.Done()
 
 		consumeLoop:
 			for {
@@ -94,13 +94,18 @@ func (cs kafkaAbstractConsumers) bindRecvChan(q *Kafka, ch chan<- []byte) {
 					break consumeLoop
 				}
 			}
+
+			done <- struct{}{}
 		}(c)
 	}
 
 	go func() {
-		wg.Wait()
+		for i := 0; i < len(cs); i++ {
+			<-done
+		}
+		log.Println("closed Consumer")
 		close(ch)
-		log.Println("consumer closed.")
+		log.Println("closed Receive Channel")
 	}()
 }
 
@@ -155,12 +160,6 @@ func (q *Kafka) BindRecvChan(ch chan<- []byte, args interface{}) error {
 
 	consumers.bindRecvChan(q, ch)
 
-	// if err := c.Close(); err != nil {
-	// 	log.Fatalln("Failed to close consumer: ", err)
-	// 	return
-	// }
-	//log.Println("consumer closed.")
-	//q.quitWg.Done()
 	return nil
 
 }
@@ -187,6 +186,14 @@ func (q *Kafka) BindSendChan(ch <-chan []byte, args interface{}) error {
 		go func() {
 			quit := make(chan struct{})
 			q.quits = append(q.quits, quit)
+			q.quitWg.Add(1)
+
+			defer func() {
+				if err := producer.Close(); err != nil {
+					log.Fatalln("Failed to close Kafka producer cleanly:", err)
+				}
+				q.quitWg.Done()
+			}()
 
 		SyncProduceLoop:
 			for {
@@ -208,11 +215,6 @@ func (q *Kafka) BindSendChan(ch <-chan []byte, args interface{}) error {
 					log.Printf("[sent]topic=%s\tpartition=%d\toffset=%d\n", produceArgs.Topic, partition, offset)
 				}
 			}
-
-			if err := producer.Close(); err != nil {
-				log.Fatalln("Failed to close Kafka producer cleanly:", err)
-			}
-			q.quitWg.Done()
 		}()
 
 	} else {
@@ -224,6 +226,15 @@ func (q *Kafka) BindSendChan(ch <-chan []byte, args interface{}) error {
 
 			quit := make(chan struct{})
 			q.quits = append(q.quits, quit)
+			q.quitWg.Add(1)
+
+			defer func() {
+				if err := asyncproducer.Close(); err != nil {
+					log.Fatalln("Failed to close Kafka producer cleanly:", err)
+				}
+				log.Println("async producer closed.")
+				q.quitWg.Done()
+			}()
 
 			go func() {
 				for err := range asyncproducer.Errors() {
@@ -246,12 +257,6 @@ func (q *Kafka) BindSendChan(ch <-chan []byte, args interface{}) error {
 					asyncproducer.Input() <- message
 				}
 			}
-
-			if err := asyncproducer.Close(); err != nil {
-				log.Fatalln("Failed to close Kafka producer cleanly:", err)
-			}
-			log.Println("async producer closed.")
-			q.quitWg.Done()
 		}()
 	}
 
