@@ -8,27 +8,35 @@ import (
 	"reflect"
 )
 
+const _MESSAGE_BUF_COUNT = 100
+
 var queues = make(map[string]Queuer)
+
+type Message struct {
+	Body   []byte
+	Origin interface{}
+}
 
 type Queuer interface {
 	Setup(string) error
-	Cleanup() error
-	Quit() <-chan struct{}
-
-	Consumer
-	Producer
+	NewConsumer(args interface{}) (Consumer, error)
+	NewProducer(args interface{}) (Producer, error)
+	closer
 }
 
 type Consumer interface {
-	BindRecvChan(chan<- []byte, interface{}) error
+	BindRecvChan(messages chan<- *Message) error
+	closer
 }
 
 type Producer interface {
-	BindSendChan(<-chan []byte, interface{}) error
+	BindSendChan(messages <-chan []byte) error
+	// Publish(message *Message) error
+	closer
 }
 
 type closer interface {
-	Close()
+	Close() error
 }
 
 func Register(name string, q Queuer) {
@@ -62,7 +70,7 @@ func Setup(qname, url string, setupFn ...interface{}) (Queuer, error) {
 
 		<-signals
 		log.Print("cleaning... ")
-		if err := q.Cleanup(); err != nil {
+		if err := q.Close(); err != nil {
 			log.Fatalln("cleaning error: ", err)
 		} else {
 
