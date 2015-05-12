@@ -7,7 +7,6 @@ import (
 	"log"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -16,254 +15,370 @@ func init() {
 }
 
 type Kafka struct {
-	brokers []string // The comma separated list of brokers in the Kafka cluster
+	Brokers    []string // The comma separated list of brokers in the Kafka cluster
+	Zookeepers []string
 
-	quitWg sync.WaitGroup
-	quits  []chan struct{}
-	quit   chan struct{}
+	closers []closer
 }
 
-type KafkaConsumeArgs struct {
+type KafkaConsumerArgs struct {
 	Topic      string `validate:"nonzero"`
-	Partitions string // The partitions to consume, can be 'all' or comma-separated numbers
-	Offset     string `validate:"regexp=^(oldest|newest)$"`
-	Zookeeper  string
 	Group      string
+	Partitions string
+	Offset     string `validate:"regexp=^(oldest|newest)$"`
 }
 
-type KafkaProduceArgs struct {
+type KafkaProducerArgs struct {
 	Topic       string `validate:"nonzero"`
 	Key         string
 	Partitioner string `validate:"regexp=^(hash|manual|random)$"` // The partitioning scheme to usep
-	Partition   int    // The partition to produce to
+	Partition   int32  // The partition to produce to
 	Sync        bool
 }
 
+type kafkaSingleConsumer struct {
+	sarama.Consumer
+	partitionConsumers []sarama.PartitionConsumer
+	messages           chan *sarama.ConsumerMessage
+	quits              []chan struct{}
+}
+
+type kafkaGroupConsumer struct {
+	*consumergroup.ConsumerGroup
+	quit chan struct{}
+}
+
+type kafkaSyncProducer struct {
+	sarama.SyncProducer
+
+	topic     string
+	partition int32
+	key       string
+
+	quit chan struct{}
+}
+
+type kafkaAsyncProducer struct {
+	sarama.AsyncProducer
+
+	topic     string
+	partition int32
+	key       string
+
+	quit chan struct{}
+}
+
 func (q *Kafka) Setup(url string) error {
-	q.brokers = strings.Split(url, ",")
-	q.quit = make(chan struct{}, 1)
+	q.Brokers = strings.Split(url, ",")
 	return nil
 }
 
-func (q *Kafka) Quit() <-chan struct{} {
-	return q.quit
-}
-
-func (q *Kafka) Cleanup() error {
-	defer func() {
-		log.Printf("Kafka shutdown OK")
-		q.quit <- struct{}{}
-	}()
-
-	for _, quit := range q.quits {
-		quit <- struct{}{}
-	}
-
-	q.quitWg.Wait()
-	return nil
-}
-
-type kafkaAbstractConsumer interface {
-	Close() error
-	Messages() <-chan *sarama.ConsumerMessage
-	Errors() <-chan *sarama.ConsumerError
-}
-
-type kafkaAbstractConsumers []kafkaAbstractConsumer
-
-func (cs kafkaAbstractConsumers) bindRecvChan(q *Kafka, ch chan<- []byte) {
-	done := make(chan struct{}, len(cs))
-	for _, c := range cs {
-		go func(c kafkaAbstractConsumer) {
-
-			quit := make(chan struct{})
-			q.quits = append(q.quits, quit)
-
-			q.quitWg.Add(1)
-			defer q.quitWg.Done()
-
-		consumeLoop:
-			for {
-				select {
-				case err := <-c.Errors():
-					log.Println(err)
-				case m := <-c.Messages():
-					ch <- m.Value
-				case <-quit:
-					c.Close()
-					break consumeLoop
-				}
-			}
-
-			done <- struct{}{}
-		}(c)
-	}
-
-	go func() {
-		for i := 0; i < len(cs); i++ {
-			<-done
+func (q *Kafka) Close() error {
+	for _, c := range q.closers {
+		if err := c.Close(); err != nil {
+			log.Fatalln(err)
 		}
-		log.Println("closed Consumer")
-		close(ch)
-		log.Println("closed Receive Channel")
-	}()
-}
-
-func (q *Kafka) BindRecvChan(ch chan<- []byte, args interface{}) error {
-	consumeArgs, ok := args.(KafkaConsumeArgs)
-	if !ok {
-		return fmt.Errorf("invalid consume arguments(%v)", args)
 	}
 
-	var consumers kafkaAbstractConsumers
+	log.Printf("Kafka shutdown OK")
 
-	if consumeArgs.Group != "" {
+	return nil
+}
+
+func (q *Kafka) NewConsumer(v interface{}) (Consumer, error) {
+	args, ok := v.(KafkaConsumerArgs)
+	if !ok {
+		return nil, fmt.Errorf("invalid consumer arguments(%v)", v)
+	}
+
+	if args.Group != "" {
+		if len(q.Zookeepers) == 0 {
+			return nil, fmt.Errorf("zookeeper url is required.")
+		}
 		config := consumergroup.NewConfig()
-		config.Offsets.Initial = consumeArgs.getOffset()
+		config.Offsets.Initial = args.getOffset()
 		config.Offsets.ProcessingTimeout = 10 * time.Second
 
-		c, err := consumergroup.JoinConsumerGroup(consumeArgs.Group, []string{consumeArgs.Topic}, strings.Split(consumeArgs.Zookeeper, ","), config)
+		cg, err := consumergroup.JoinConsumerGroup(args.Group, strings.Split(args.Topic, ","), q.Zookeepers, config)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
-		consumers = []kafkaAbstractConsumer{c}
+		c := &kafkaGroupConsumer{ConsumerGroup: cg}
+		q.closers = append(q.closers, c)
 
-	} else {
-		c, err := sarama.NewConsumer(q.brokers, sarama.NewConfig())
-		if err != nil {
-			return err
-		}
+		return c, nil
 
-		quit := make(chan struct{})
-		q.quits = append(q.quits, quit)
-
-		go func() {
-			<-quit
-			if err := c.Close(); err != nil {
-				log.Fatalln(err)
-			}
-		}()
-		partitions, err := consumeArgs.getPartitions(c)
-		if err != nil {
-			return err
-		}
-
-		for _, p := range partitions {
-			pc, err := c.ConsumePartition(consumeArgs.Topic, p, consumeArgs.getOffset())
-			if err != nil {
-				return err
-			}
-			consumers = append(consumers, pc)
-		}
 	}
 
-	consumers.bindRecvChan(q, ch)
+	c, err := sarama.NewConsumer(q.Brokers, sarama.NewConfig())
+	if err != nil {
+		return nil, err
+	}
+	sc := &kafkaSingleConsumer{Consumer: c}
 
-	return nil
+	partitions, err := args.getPartitions(c)
+	if err != nil {
+		return nil, err
+	}
 
+	for _, p := range partitions {
+		pc, err := c.ConsumePartition(args.Topic, p, args.getOffset())
+		if err != nil {
+			return nil, err
+		}
+		sc.partitionConsumers = append(sc.partitionConsumers, pc)
+	}
+	q.closers = append(q.closers, sc)
+	return sc, err
 }
 
-func (q *Kafka) BindSendChan(ch <-chan []byte, args interface{}) error {
-	produceArgs, ok := args.(KafkaProduceArgs)
+func (q *Kafka) NewProducer(v interface{}) (Producer, error) {
+	args, ok := v.(KafkaProducerArgs)
 	if !ok {
-		return fmt.Errorf("invalid consume arguments(%v)", args)
+		return nil, fmt.Errorf("invalid consume arguments(%v)", v)
 	}
 
 	config := sarama.NewConfig()
-	// set partitioner
-	if partitioner, err := produceArgs.getPartitioner(); err == nil {
+	if partitioner, err := args.getPartitioner(); err == nil {
 		config.Producer.Partitioner = partitioner
 	}
 
-	if produceArgs.Sync {
+	if args.Sync {
 		config.Producer.RequiredAcks = sarama.WaitForAll
-		producer, err := sarama.NewSyncProducer(q.brokers, config)
+
+		producer, err := sarama.NewSyncProducer(q.Brokers, config)
 		if err != nil {
-			return fmt.Errorf("Failed to open Kafka producer: %s", err)
+			return nil, fmt.Errorf("Failed to open Kafka producer: %s", err)
 		}
 
-		go func() {
-			quit := make(chan struct{})
-			q.quits = append(q.quits, quit)
-			q.quitWg.Add(1)
-
-			defer func() {
-				if err := producer.Close(); err != nil {
-					log.Fatalln("Failed to close Kafka producer cleanly:", err)
-				}
-				q.quitWg.Done()
-			}()
-
-		SyncProduceLoop:
-			for {
-				select {
-				case <-quit:
-					break SyncProduceLoop
-				case body := <-ch:
-					message := &sarama.ProducerMessage{Topic: produceArgs.Topic, Partition: int32(produceArgs.Partition)}
-					if produceArgs.Key != "" {
-						message.Key = sarama.StringEncoder(produceArgs.Key)
-					}
-
-					message.Value = sarama.ByteEncoder(body)
-
-					partition, offset, err := producer.SendMessage(message)
-					if err != nil {
-						log.Fatalf("[Error]%v\n", err)
-					}
-					log.Printf("[sent]topic=%s\tpartition=%d\toffset=%d\n", produceArgs.Topic, partition, offset)
-				}
-			}
-		}()
-
-	} else {
-		asyncproducer, err := sarama.NewAsyncProducer(q.brokers, config)
-		if err != nil {
-			return fmt.Errorf("Failed to open Kafka producer: %s", err)
+		p := &kafkaSyncProducer{
+			SyncProducer: producer,
+			topic:        args.Topic,
+			partition:    args.Partition,
 		}
-		go func() {
+		q.closers = append(q.closers, p)
 
-			quit := make(chan struct{})
-			q.quits = append(q.quits, quit)
-			q.quitWg.Add(1)
+		return p, nil
+	}
 
-			defer func() {
-				if err := asyncproducer.Close(); err != nil {
-					log.Fatalln("Failed to close Kafka producer cleanly:", err)
-				}
-				log.Println("async producer closed.")
-				q.quitWg.Done()
-			}()
+	producer, err := sarama.NewAsyncProducer(q.Brokers, config)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to open Kafka producer: %s", err)
+	}
 
-			go func() {
-				for err := range asyncproducer.Errors() {
-					log.Fatalln("Failed to produce message", err)
-				}
-			}()
+	p := &kafkaAsyncProducer{
+		AsyncProducer: producer,
+		topic:         args.Topic,
+		partition:     args.Partition,
+	}
+	q.closers = append(q.closers, p)
 
-		AsyncProduceLoop:
+	return p, nil
+}
+
+func (c *kafkaSingleConsumer) BindRecvChan(messages chan<- *Message) error {
+	if c.messages == nil {
+		c.messages = make(chan *sarama.ConsumerMessage, _MESSAGE_BUF_COUNT)
+	}
+
+	for _, pc := range c.partitionConsumers {
+		go func(pc sarama.PartitionConsumer) {
+			quit := make(chan struct{}, 1)
+			c.quits = append(c.quits, quit)
+		SingleConsumerLoop:
 			for {
 				select {
+				case c.messages <- <-pc.Messages():
+				case err := <-pc.Errors():
+					log.Fatalln(err)
 				case <-quit:
-					break AsyncProduceLoop
-				case body := <-ch:
-					message := &sarama.ProducerMessage{Topic: produceArgs.Topic, Partition: int32(produceArgs.Partition)}
-					if produceArgs.Key != "" {
-						message.Key = sarama.StringEncoder(produceArgs.Key)
-					}
-
-					message.Value = sarama.ByteEncoder(body)
-					asyncproducer.Input() <- message
+					break SingleConsumerLoop
 				}
 			}
-		}()
+		}(pc)
+	}
+
+	go func() {
+		for m := range c.messages {
+			messages <- &Message{Body: m.Value, Origin: m}
+		}
+	}()
+	return nil
+}
+
+func (c *kafkaSingleConsumer) Close() error {
+	if c.Consumer == nil {
+		return nil
+	}
+
+	for _, q := range c.quits {
+		q <- struct{}{}
+	}
+	log.Println("break consume loop")
+
+	for _, pc := range c.partitionConsumers {
+		pc.AsyncClose()
+	}
+	log.Println("close partition consumers")
+
+	if err := c.Consumer.Close(); err != nil {
+		return nil
+	}
+	log.Println("close single consumer")
+
+	return nil
+}
+
+func (c *kafkaGroupConsumer) BindRecvChan(messages chan<- *Message) error {
+	go func() {
+		if c.quit == nil {
+			c.quit = make(chan struct{}, 1)
+		}
+
+	GroupConsumeLoop:
+		for {
+			select {
+			case m := <-c.Messages():
+				messages <- &Message{Body: m.Value, Origin: m}
+			case err := <-c.Errors():
+				log.Fatalln(err)
+			case <-c.quit:
+				break GroupConsumeLoop
+			}
+		}
+	}()
+	return nil
+}
+
+func (c *kafkaGroupConsumer) Subscribe(handler func(*Message)) error {
+	go func() {
+		if c.quit == nil {
+			c.quit = make(chan struct{}, 1)
+		}
+
+	GroupSubscribeLoop:
+		for {
+			select {
+			case m := <-c.Messages():
+				handler(&Message{Body: m.Value, Origin: m})
+			case err := <-c.Errors():
+				log.Fatalln(err)
+			case <-c.quit:
+				break GroupSubscribeLoop
+			}
+		}
+	}()
+	return nil
+}
+
+func (c *kafkaGroupConsumer) Close() error {
+	if c.ConsumerGroup == nil {
+		return nil
+	}
+
+	c.quit <- struct{}{}
+	log.Println("break consume loop")
+
+	if err := c.ConsumerGroup.Close(); err != nil {
+		return err
+	}
+	log.Println("close group consumer")
+
+	return nil
+}
+
+func (p *kafkaSyncProducer) BindSendChan(messages <-chan []byte) error {
+	go func() {
+		if p.quit == nil {
+			p.quit = make(chan struct{}, 1)
+		}
+
+	SyncProduceLoop:
+		for {
+			select {
+			case <-p.quit:
+				break SyncProduceLoop
+			case body := <-messages:
+				message := &sarama.ProducerMessage{Topic: p.topic, Partition: p.partition}
+				if p.key != "" {
+					message.Key = sarama.StringEncoder(p.key)
+				}
+
+				message.Value = sarama.ByteEncoder(body)
+
+				partition, offset, err := p.SendMessage(message)
+				if err != nil {
+					log.Fatalf("[Error]%v\n", err)
+				}
+				log.Printf("[sent]topic=%s\tpartition=%d\toffset=%d\n", p.topic, partition, offset)
+			}
+		}
+
+	}()
+	return nil
+}
+
+func (p *kafkaSyncProducer) Close() error {
+	if p.SyncProducer == nil {
+		return nil
+	}
+
+	if p.quit != nil {
+		p.quit <- struct{}{}
+	}
+
+	if err := p.SyncProducer.Close(); err != nil {
+		return err
 	}
 
 	return nil
 }
 
-func (args *KafkaConsumeArgs) getOffset() int64 {
+func (p *kafkaAsyncProducer) BindSendChan(messages <-chan []byte) error {
+	go func() {
+		if p.quit == nil {
+			p.quit = make(chan struct{}, 1)
+		}
+
+	AsyncProduceLoop:
+		for {
+			select {
+			case <-p.quit:
+				break AsyncProduceLoop
+			case body := <-messages:
+				message := &sarama.ProducerMessage{Topic: p.topic, Partition: int32(p.partition)}
+				if p.key != "" {
+					message.Key = sarama.StringEncoder(p.key)
+				}
+
+				message.Value = sarama.ByteEncoder(body)
+				p.AsyncProducer.Input() <- message
+			case err := <-p.AsyncProducer.Errors():
+				log.Fatalln("Failed to produce message", err)
+			}
+		}
+	}()
+	return nil
+}
+
+func (p *kafkaAsyncProducer) Close() error {
+	if p.AsyncProducer == nil {
+		return nil
+	}
+
+	if p.quit != nil {
+		p.quit <- struct{}{}
+	}
+
+	if err := p.AsyncProducer.Close(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (args *KafkaConsumerArgs) getOffset() int64 {
 	switch args.Offset {
 	case "oldest":
 		return sarama.OffsetOldest
@@ -273,7 +388,7 @@ func (args *KafkaConsumeArgs) getOffset() int64 {
 	return sarama.OffsetNewest
 }
 
-func (args *KafkaConsumeArgs) getPartitions(c sarama.Consumer) ([]int32, error) {
+func (args *KafkaConsumerArgs) getPartitions(c sarama.Consumer) ([]int32, error) {
 	if args.Partitions == "all" {
 		return c.Partitions(args.Topic)
 	}
@@ -291,7 +406,7 @@ func (args *KafkaConsumeArgs) getPartitions(c sarama.Consumer) ([]int32, error) 
 	return pList, nil
 }
 
-func (args *KafkaProduceArgs) getPartitioner() (func(string) sarama.Partitioner, error) {
+func (args *KafkaProducerArgs) getPartitioner() (func(string) sarama.Partitioner, error) {
 	switch args.Partitioner {
 	case "":
 		if args.Partition >= 0 {
