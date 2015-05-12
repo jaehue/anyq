@@ -1,4 +1,4 @@
-package qlib
+package anyq
 
 import (
 	"fmt"
