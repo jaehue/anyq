@@ -69,3 +69,18 @@ Close:
 ```
 q.Close()
 ```
+
+## Examples
+
+- kafka  
+  [kafka-consumer](https://github.com/jaehue/anyq/tree/master/example/kafka-consumer)  
+  [kafka-producer](https://github.com/jaehue/anyq/tree/master/example/kafka-producer)  
+- rabbitmq  
+  [rabbitmq-consumer](https://github.com/jaehue/anyq/tree/master/example/rabbitmq-consumer)  
+  [rabbitmq-producer](https://github.com/jaehue/anyq/tree/master/example/rabbitmq-producer)  
+- nats  
+  [nats-consumer](https://github.com/jaehue/anyq/tree/master/example/nats-consumer)  
+  [nats-producer](https://github.com/jaehue/anyq/tree/master/example/nats-producer)  
+- nsq  
+  [nsq-consumer](https://github.com/jaehue/anyq/tree/master/example/nsq-consumer)  
+  [nsq-producer](https://github.com/jaehue/anyq/tree/master/example/nsq-producer)  
