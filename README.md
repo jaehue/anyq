@@ -86,8 +86,7 @@ setQos := func(q *anyq.Rabbitmq) {
 }
 
 setExchange := func(q *anyq.Rabbitmq) {
-	log.Println("declaring Exchange: ", ex)
-	if err := q.ExchangeDeclare(ex, "direct", false, false, false, false, nil); err != nil {
+	if err := q.ExchangeDeclare("test-ex", "direct", false, false, false, false, nil); err != nil {
 		log.Fatal(err)
 	}
 	log.Println("declared Exchange")
@@ -99,8 +98,8 @@ q, err := anyq.New("rabbitmq", "amqp://guest:guest@127.0.0.1:5672/", setQos, set
 set zookeeper urls of Kafka
 
 ```
-q, err := anyq.New("kafka", *brokerList, func(q *anyq.Kafka) {
-	q.Zookeepers = strings.Split(*zookeeper, ",")
+q, err := anyq.New("kafka", "localhost:9092", func(q *anyq.Kafka) {
+	q.Zookeepers = []string{"localhost:2181", "localhost:2182"}
 })
 ```
 
