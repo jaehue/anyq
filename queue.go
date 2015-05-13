@@ -1,5 +1,4 @@
 // This is queue library wrapper for widely popular queues. AnyQ provide one way to handle various queues.
-// (visit https://github.com/jaehue/anyq)
 //
 // Supporting Queues
 //   - RabbitMQ(https://www.rabbitmq.com)
@@ -7,6 +6,7 @@
 //   - NSQ(http://nsq.io)
 //   - NATS(http://nats.io)
 //
+// Visit https://github.com/jaehue/anyq
 package anyq
 
 import (
