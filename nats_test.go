@@ -2,29 +2,44 @@ package anyq
 
 import (
 	"github.com/apcera/nats"
+	"io/ioutil"
 	"log"
-	"reflect"
 	"strconv"
 	"testing"
 	"time"
 )
 
-func TestNatsReply(t *testing.T) {
+func TestNatsConn(t *testing.T) {
 	q, err := New("nats", "nats://127.0.0.1:4222")
 	if err != nil {
 		panic(err)
 	}
 
-	// reflect nats Conn
-	v := reflect.ValueOf(q)
-	if v.Kind() == reflect.Ptr {
-		v = v.Elem()
+	conn, err := q.Conn()
+	if err != nil {
+		t.Error(err)
 	}
 
-	conn := v.FieldByName("Conn")
-	natsConn, ok := conn.Interface().(*nats.Conn)
+	if _, ok := conn.(*nats.Conn); !ok {
+		t.Errorf("invalid conn type(%T)\n", conn)
+	}
+}
+
+func TestNatsReply(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+
+	q, err := New("nats", "nats://127.0.0.1:4222")
+	if err != nil {
+		panic(err)
+	}
+
+	conn, err := q.Conn()
+	if err != nil {
+		t.Error(err)
+	}
+	natsConn, ok := conn.(*nats.Conn)
 	if !ok {
-		log.Fatalln("invalid conn type", conn)
+		log.Fatalf("invalid conn type(%T)\n", conn)
 	}
 
 	// set consumer for reply
