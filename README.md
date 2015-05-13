@@ -168,3 +168,11 @@ ok  	github.com/jaehue/anyq/benchmark	23.944s
 - nsq  
   [nsq-consumer](https://github.com/jaehue/anyq/tree/master/example/nsq-consumer)  
   [nsq-producer](https://github.com/jaehue/anyq/tree/master/example/nsq-producer)  
+  
+## Contributing
+
+  1. Fork it ( https://github.com/jaehue/anyq/fork )
+  2. Create your feature branch (`git checkout -b my-new-feature`)
+  3. Commit your changes (`git commit -am 'Add some feature'`)
+  4. Push to the branch (`git push origin my-new-feature`)
+  5. Create a new Pull Request
