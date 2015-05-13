@@ -1,4 +1,6 @@
-# AnyQ
+# AnyQ 
+[![GoDoc](https://godoc.org/github.com/jaehue/anyq?status.svg)](https://godoc.org/github.com/jaehue/anyq)
+
 
 This is queue library wrapper for widely popular queues.
 AnyQ provide one way to handle various queues.
