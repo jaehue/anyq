@@ -1,3 +1,10 @@
+// This is queue library wrapper for widely popular queues. AnyQ provide one way to handle various queues.
+//
+// Supporting Queues
+//   - RabbitMQ(https://www.rabbitmq.com)
+//   - Kafka(https://kafka.apache.org)
+//   - NSQ(http://nsq.io)
+//   - NATS(http://nats.io)
 package anyq
 
 import (
@@ -17,25 +24,47 @@ type Message struct {
 	Origin interface{}
 }
 
+// Queuer provide generic method to handle queue
 type Queuer interface {
-	Setup(string) error
+	// Conn returns original connection object.
 	Conn() (interface{}, error)
+
+	// NewConsumer create new consumer.
+	// You MUST pass valid argument such as RabbitmqConsumerArgs, KafkaConsumerArgs, NsqConsumerArgs, and NatsConsumerArgs
 	NewConsumer(args interface{}) (Consumer, error)
+
+	// NewProducer create new producer.
+	// You MUST pass valid argument such as RabbitmqProducerArgs, KafkaProducerArgs, NsqProducerArgs, and NatsProducerArgs
 	NewProducer(args interface{}) (Producer, error)
+
+	// SetLogger assigns the logger to use as well as a level.
+	// The logger parameter is an interface that requires the following method to be implemented (such as the the stdlib log.Logger):
+	//
+	//    Output(calldepth int, s string)
+	//
 	SetLogger(logger, LogLevel)
+
+	Setup(string) error
 	closer
 }
 
+// Consumer process messages from Queue.
 type Consumer interface {
+	// Consumer returns original consumer object
 	Consumer() (interface{}, error)
+
+	// BindRecvChan bind a channel for receive operations from queue.
 	BindRecvChan(messages chan<- *Message) error
 	closer
 }
 
+// Producer publish messages to Queue.
 type Producer interface {
+	// Producer returns original producer object
 	Producer() (interface{}, error)
+
+	// Producer bind a channel for send operations to queue.
 	BindSendChan(messages <-chan []byte) error
-	// Publish(message *Message) error
 	closer
 }
 
@@ -58,16 +87,19 @@ type logger interface {
 	Output(calldepth int, s string) error
 }
 
-func Register(name string, q Queuer) {
-	if q == nil {
+// Register makes a queue available by the provided name.
+// If Register is called twice with the same name or if queue is nil, it panics.
+func Register(name string, queue Queuer) {
+	if queue == nil {
 		panic("queue: Register queue is nil")
 	}
 	if _, dup := queues[name]; dup {
 		panic("queue: Register called twice for queue " + name)
 	}
-	queues[name] = q
+	queues[name] = queue
 }
 
+// New creates a queue specified by its queue name and a queue url,
 func New(qname, url string, setupFn ...interface{}) (Queuer, error) {
 	q, ok := queues[qname]
 	if !ok {
