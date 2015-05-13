@@ -10,7 +10,7 @@ import (
 func BenchmarkNsqProduce(b *testing.B) {
 	log.SetOutput(ioutil.Discard)
 
-	q, err := anyq.Setup("nsq", "192.168.81.43:4150")
+	q, err := anyq.New("nsq", "192.168.81.43:4150")
 	if err != nil {
 		b.Error(err)
 	}
@@ -20,7 +20,7 @@ func BenchmarkNsqProduce(b *testing.B) {
 func BenchmarkNsqConsume(b *testing.B) {
 	log.SetOutput(ioutil.Discard)
 
-	q, err := anyq.Setup("nsq", "192.168.81.43:4150")
+	q, err := anyq.New("nsq", "192.168.81.43:4150")
 	if err != nil {
 		b.Error(err)
 	}

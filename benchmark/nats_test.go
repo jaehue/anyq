@@ -10,7 +10,7 @@ import (
 func BenchmarkNatsProduce(b *testing.B) {
 	log.SetOutput(ioutil.Discard)
 
-	q, err := anyq.Setup("nats", "nats://192.168.81.43:4222")
+	q, err := anyq.New("nats", "nats://192.168.81.43:4222")
 	if err != nil {
 		b.Error(err)
 	}
@@ -20,7 +20,7 @@ func BenchmarkNatsProduce(b *testing.B) {
 func BenchmarkNatsConsume(b *testing.B) {
 	log.SetOutput(ioutil.Discard)
 
-	q, err := anyq.Setup("nats", "nats://192.168.81.43:4222")
+	q, err := anyq.New("nats", "nats://192.168.81.43:4222")
 	if err != nil {
 		b.Error(err)
 	}

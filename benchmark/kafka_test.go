@@ -10,7 +10,7 @@ import (
 func BenchmarkKafkaAsyncProduce(b *testing.B) {
 	log.SetOutput(ioutil.Discard)
 
-	q, err := anyq.Setup("kafka", "localhost:9092")
+	q, err := anyq.New("kafka", "localhost:9092")
 	if err != nil {
 		b.Error(err)
 	}
@@ -21,7 +21,7 @@ func BenchmarkKafkaAsyncProduce(b *testing.B) {
 func BenchmarkKafkaSyncProduce(b *testing.B) {
 	log.SetOutput(ioutil.Discard)
 
-	q, err := anyq.Setup("kafka", "localhost:9092")
+	q, err := anyq.New("kafka", "localhost:9092")
 	if err != nil {
 		b.Error(err)
 	}
@@ -32,7 +32,7 @@ func BenchmarkKafkaSyncProduce(b *testing.B) {
 func BenchmarkKafkaConsume(b *testing.B) {
 	log.SetOutput(ioutil.Discard)
 
-	q, err := anyq.Setup("kafka", "localhost:9092")
+	q, err := anyq.New("kafka", "localhost:9092")
 	if err != nil {
 		b.Error(err)
 	}

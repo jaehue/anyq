@@ -49,7 +49,7 @@ func Register(name string, q Queuer) {
 	queues[name] = q
 }
 
-func Setup(qname, url string, setupFn ...interface{}) (Queuer, error) {
+func New(qname, url string, setupFn ...interface{}) (Queuer, error) {
 	q, ok := queues[qname]
 	if !ok {
 		return nil, fmt.Errorf("queue: unknown queue %q (forgotten import?)", qname)

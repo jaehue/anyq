@@ -2,46 +2,46 @@ package main
 
 import (
 	"fmt"
-	"github.com/jaehue/qlib"
+	"github.com/jaehue/anyq"
 	"log"
 )
 
 func main() {
-	//runRabbitmq()
-	runKafka()
+	runRabbitmq()
+	//runKafka()
 	//runNsq()
 	//runNats()
 
 	<-make(chan struct{})
 }
 
-func runKafka() qlib.Queuer {
-	q, err := qlib.Setup("kafka", "192.168.81.43:32785", func(q *qlib.Kafka) {
+func runKafka() anyq.Queuer {
+	q, err := anyq.New("kafka", "192.168.81.43:32785", func(q *anyq.Kafka) {
 		q.Zookeepers = []string{"192.168.81.43:32784"}
 	})
 	if err != nil {
 		panic(err)
 	}
 	fmt.Println("setup kafka: ", q)
-	runPubSub(q, qlib.KafkaConsumerArgs{Topic: "test", Partitions: "all", Group: "group1"},
-		qlib.KafkaProducerArgs{Topic: "test", Sync: true})
+	runPubSub(q, anyq.KafkaConsumerArgs{Topic: "test", Partitions: "all", Group: "group1"},
+		anyq.KafkaProducerArgs{Topic: "test", Sync: true})
 	return q
 }
 
-func runRabbitmq() qlib.Queuer {
+func runRabbitmq() anyq.Queuer {
 	var (
 		ex    = "test-exchange"
 		qname = "test"
 		key   = "test-key"
 	)
 
-	setQos := func(q *qlib.Rabbitmq) {
+	setQos := func(q *anyq.Rabbitmq) {
 		if err := q.Qos(100, 0, false); err != nil {
 			log.Fatal(err)
 		}
 	}
 
-	setExchange := func(q *qlib.Rabbitmq) {
+	setExchange := func(q *anyq.Rabbitmq) {
 		log.Println("declaring Exchange: ", ex)
 		if err := q.ExchangeDeclare(ex, "direct", false, false, false, false, nil); err != nil {
 			log.Fatal(err)
@@ -49,38 +49,38 @@ func runRabbitmq() qlib.Queuer {
 		log.Println("declared Exchange")
 	}
 
-	q, err := qlib.Setup("rabbitmq", "amqp://guest:guest@127.0.0.1:5672/", setQos, setExchange)
+	q, err := anyq.New("rabbitmq", "amqp://guest:guest@127.0.0.1:5672/", setQos, setExchange)
 	if err != nil {
 		panic(err)
 	}
 	fmt.Println("setup rabbitmq: ", q)
 
-	runPubSub(q, qlib.RabbitmqConsumerArgs{Queue: qname, RoutingKey: key, Exchange: ex}, qlib.RabbitmqProducerArgs{Exchange: ex, RoutingKey: key})
+	runPubSub(q, anyq.RabbitmqConsumerArgs{Queue: qname, RoutingKey: key, Exchange: ex}, anyq.RabbitmqProducerArgs{Exchange: ex, RoutingKey: key})
 	return q
 }
 
-func runNats() qlib.Queuer {
-	q, err := qlib.Setup("nats", "nats://192.168.81.43:4222")
+func runNats() anyq.Queuer {
+	q, err := anyq.New("nats", "nats://192.168.81.43:4222")
 	if err != nil {
 		panic(err)
 	}
 	fmt.Println("setup nats: ", q)
-	runPubSub(q, qlib.NatsConsumerArgs{Subject: "test"}, qlib.NatsProducerArgs{Subject: "test"})
+	runPubSub(q, anyq.NatsConsumerArgs{Subject: "test"}, anyq.NatsProducerArgs{Subject: "test"})
 	return q
 }
 
-func runNsq() qlib.Queuer {
-	q, err := qlib.Setup("nsq", "192.168.81.43:4150")
+func runNsq() anyq.Queuer {
+	q, err := anyq.New("nsq", "192.168.81.43:4150")
 	if err != nil {
 		panic(err)
 	}
 	fmt.Println("setup nsq: ", q)
-	runPubSub(q, qlib.NsqConsumerArgs{Topic: "test", Channel: "qlib"}, qlib.NsqProducerArgs{Topic: "test"})
+	runPubSub(q, anyq.NsqConsumerArgs{Topic: "test", Channel: "anyq"}, anyq.NsqProducerArgs{Topic: "test"})
 
 	return q
 }
 
-func runPubSub(q qlib.Queuer, consumeArgs, produceArgs interface{}) {
+func runPubSub(q anyq.Queuer, consumeArgs, produceArgs interface{}) {
 	c, err := q.NewConsumer(consumeArgs)
 	if err != nil {
 		panic(err)
@@ -92,7 +92,7 @@ func runPubSub(q qlib.Queuer, consumeArgs, produceArgs interface{}) {
 	}
 
 	// Consume
-	recvCh := make(chan *qlib.Message, 100)
+	recvCh := make(chan *anyq.Message, 100)
 	err = c.BindRecvChan(recvCh)
 	if err != nil {
 		panic(err)
