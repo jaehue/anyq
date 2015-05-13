@@ -1,10 +1,12 @@
 // This is queue library wrapper for widely popular queues. AnyQ provide one way to handle various queues.
+// (visit https://github.com/jaehue/anyq)
 //
 // Supporting Queues
 //   - RabbitMQ(https://www.rabbitmq.com)
 //   - Kafka(https://kafka.apache.org)
 //   - NSQ(http://nsq.io)
 //   - NATS(http://nats.io)
+//
 package anyq
 
 import (
