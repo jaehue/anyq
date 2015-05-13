@@ -3,7 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/jaehue/qlib"
+	"github.com/jaehue/anyq"
 	"log"
 )
 
@@ -21,37 +21,27 @@ func init() {
 }
 
 func main() {
-	q, err := qlib.Setup("rabbitmq", *uri, setExchange, setQueue)
+	q, err := anyq.New("rabbitmq", *uri, setExchange)
 	if err != nil {
 		panic(err)
 	}
 
-	recvCh := make(chan []byte, 100)
-	q.BindRecvChan(recvCh, qlib.RabbitmqConsumeArgs{Queue: *queueName, Consumer: *consumerTag})
+	c, err := q.NewConsumer(anyq.RabbitmqConsumerArgs{Queue: *queueName, RoutingKey: *bindingKey, Exchange: *exchange, ConsumerTag: *consumerTag})
+	if err != nil {
+		panic(err)
+	}
+
+	recvCh := make(chan *anyq.Message)
+	c.BindRecvChan(recvCh)
 	for m := range recvCh {
-		fmt.Println("[receive]", string(m))
+		fmt.Println("[receive]", string(m.Body))
 	}
 }
 
-func setExchange(q *qlib.Rabbitmq) {
+func setExchange(q *anyq.Rabbitmq) {
 	log.Println("declaring Exchange: ", *exchange)
 	if err := q.ExchangeDeclare(*exchange, *exchangeType, false, false, false, false, nil); err != nil {
 		log.Fatal(err)
 	}
 	log.Println("declared Exchange")
-}
-
-func setQueue(q *qlib.Rabbitmq) {
-	log.Println("declaring Queue: ", *queueName)
-	queue, err := q.QueueDeclare(*queueName, true, false, false, false, nil)
-	if err != nil {
-		log.Fatal(err)
-	}
-	log.Printf("declared Queue (%q %d messages, %d consumers)\n", queue.Name, queue.Messages, queue.Consumers)
-
-	log.Printf("binding to Exchange (key %q)\n", *bindingKey)
-	if err := q.QueueBind(queue.Name, *bindingKey, *exchange, false, nil); err != nil {
-		log.Fatal(err)
-	}
-	log.Println("Queue bound to Exchange")
 }

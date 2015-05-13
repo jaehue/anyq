@@ -3,7 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/jaehue/qlib"
+	"github.com/jaehue/anyq"
 	"log"
 )
 
@@ -21,7 +21,7 @@ func init() {
 }
 
 func main() {
-	q, err := qlib.Setup("rabbitmq", *uri, func(q *qlib.Rabbitmq) {
+	q, err := anyq.New("rabbitmq", *uri, func(q *anyq.Rabbitmq) {
 		log.Println("declaring Exchange: ", *exchangeName)
 		if err := q.ExchangeDeclare(*exchangeName, *exchangeType, false, false, false, false, nil); err != nil {
 			log.Fatal(err)
@@ -32,11 +32,16 @@ func main() {
 		panic(err)
 	}
 
+	p, err := q.NewProducer(anyq.RabbitmqProducerArgs{Exchange: *exchangeName, RoutingKey: *routingKey})
+	if err != nil {
+		panic(err)
+	}
+
 	sendCh := make(chan []byte)
-	q.BindSendChan(sendCh, qlib.RabbitmqProduceArgs{Exchange: *exchangeName, RoutingKey: *routingKey})
+	p.BindSendChan(sendCh)
 	sendCh <- []byte(*body)
 
 	fmt.Println("[send]", *body)
 
-	q.Cleanup()
+	q.Close()
 }
