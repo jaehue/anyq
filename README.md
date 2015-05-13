@@ -126,6 +126,34 @@ natsConn.Subscribe("test", func(m *nats.Msg) {
 })
 ```
 
+## Test
+
+Unit test:
+
+```
+$ go test github.com/jaehue/anyq
+ok  	github.com/jaehue/anyq	1.136s
+```
+
+Benchmark test:
+
+```
+$ go test github.com/jaehue/anyq/benchmark -test.bench=. -test.benchmem
+testing: warning: no tests to run
+PASS
+BenchmarkKafkaAsyncProduce	  300000	      4111 ns/op	     700 B/op	      10 allocs/op
+BenchmarkKafkaSyncProduce	   20000	    100699 ns/op	    3080 B/op	      58 allocs/op
+BenchmarkKafkaConsume	   30000	    151092 ns/op	   27805 B/op	     405 allocs/op
+BenchmarkNatsProduce	  500000	      3468 ns/op	     280 B/op	       4 allocs/op
+BenchmarkNatsConsume	  200000	     10199 ns/op	    1429 B/op	      21 allocs/op
+BenchmarkNatsReply	    5000	    256335 ns/op	    2128 B/op	      88 allocs/op
+BenchmarkNsqProduce	  100000	     14261 ns/op	     852 B/op	      17 allocs/op
+BenchmarkNsqConsume	     100	  13415530 ns/op	  824936 B/op	   17322 allocs/op
+BenchmarkRabbitmqProduce	   30000	     38698 ns/op	    1739 B/op	      53 allocs/op
+BenchmarkRabbitmqConsume	       1	2421170045 ns/op	97861152 B/op	 1966673 allocs/op
+ok  	github.com/jaehue/anyq/benchmark	23.944s
+```
+
 ## Examples
 
 - kafka  
