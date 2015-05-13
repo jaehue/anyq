@@ -62,6 +62,10 @@ func (q *Rabbitmq) Setup(url string) error {
 	return nil
 }
 
+func (q *Rabbitmq) Conn() (interface{}, error) {
+	return q.conn, nil
+}
+
 func (q *Rabbitmq) SetLogger(l logger, level LogLevel) {}
 
 func (q *Rabbitmq) Close() error {
@@ -117,6 +121,10 @@ func (q *Rabbitmq) NewProducer(v interface{}) (Producer, error) {
 	return p, nil
 }
 
+func (c *rabbitmqConsumer) Consumer() (interface{}, error) {
+	return nil, fmt.Errorf("unsupported method")
+}
+
 func (c *rabbitmqConsumer) BindRecvChan(messages chan<- *Message) error {
 	deliveries, err := c.channel.Consume(c.args.Queue, c.args.ConsumerTag, c.args.AutoAck, c.args.Exclusive, c.args.NoLocal, c.args.NoWait, c.args.Args)
 	if err != nil {
@@ -136,6 +144,10 @@ func (c *rabbitmqConsumer) Close() error {
 		return fmt.Errorf("Consumer cancel failed: %s", err)
 	}
 	return nil
+}
+
+func (p *rabbitmqProducer) Producer() (interface{}, error) {
+	return nil, fmt.Errorf("unsupported method")
 }
 
 func (p *rabbitmqProducer) BindSendChan(messages <-chan []byte) error {

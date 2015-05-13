@@ -12,7 +12,7 @@ func init() {
 }
 
 type Nats struct {
-	*nats.Conn
+	conn *nats.Conn
 }
 
 type NatsConsumerArgs struct {
@@ -33,6 +33,10 @@ type natsProducer struct {
 	subject string
 }
 
+func (c *natsConsumer) Consumer() (interface{}, error) {
+	return nil, fmt.Errorf("unsupported method")
+}
+
 func (c *natsConsumer) BindRecvChan(messages chan<- *Message) error {
 	s, err := c.Conn.Subscribe(c.subject, func(m *nats.Msg) {
 		log.Println("receive message: ", string(m.Data))
@@ -47,6 +51,10 @@ func (c *natsConsumer) BindRecvChan(messages chan<- *Message) error {
 
 func (c *natsConsumer) Close() error {
 	return nil
+}
+
+func (p *natsProducer) Producer() (interface{}, error) {
+	return nil, fmt.Errorf("unsupported method")
 }
 
 func (p *natsProducer) BindSendChan(messages <-chan []byte) error {
@@ -74,14 +82,18 @@ func (q *Nats) Setup(url string) error {
 	if err != nil {
 		return err
 	}
-	q.Conn = nc
+	q.conn = nc
 	return nil
+}
+
+func (q *Nats) Conn() (interface{}, error) {
+	return q.conn, nil
 }
 
 func (q *Nats) SetLogger(l logger, level LogLevel) {}
 
 func (q *Nats) Close() error {
-	q.Conn.Close()
+	q.conn.Close()
 	log.Printf("NATS shutdown OK")
 	return nil
 }
@@ -92,7 +104,7 @@ func (q *Nats) NewConsumer(v interface{}) (Consumer, error) {
 		return nil, fmt.Errorf("invalid consume arguments(%v)", v)
 	}
 
-	return &natsConsumer{q.Conn, args.Subject}, nil
+	return &natsConsumer{q.conn, args.Subject}, nil
 }
 
 func (q *Nats) NewProducer(v interface{}) (Producer, error) {
@@ -100,5 +112,5 @@ func (q *Nats) NewProducer(v interface{}) (Producer, error) {
 	if !ok {
 		return nil, fmt.Errorf("invalid consume arguments(%v)", v)
 	}
-	return &natsProducer{q.Conn, args.Subject}, nil
+	return &natsProducer{q.conn, args.Subject}, nil
 }

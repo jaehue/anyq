@@ -37,19 +37,19 @@ type KafkaProducerArgs struct {
 }
 
 type kafkaSingleConsumer struct {
-	sarama.Consumer
+	consumer           sarama.Consumer
 	partitionConsumers []sarama.PartitionConsumer
 	messages           chan *sarama.ConsumerMessage
 	quits              []chan struct{}
 }
 
 type kafkaGroupConsumer struct {
-	*consumergroup.ConsumerGroup
-	quit chan struct{}
+	consumer *consumergroup.ConsumerGroup
+	quit     chan struct{}
 }
 
 type kafkaSyncProducer struct {
-	sarama.SyncProducer
+	producer sarama.SyncProducer
 
 	topic     string
 	partition int32
@@ -59,7 +59,7 @@ type kafkaSyncProducer struct {
 }
 
 type kafkaAsyncProducer struct {
-	sarama.AsyncProducer
+	producer sarama.AsyncProducer
 
 	topic     string
 	partition int32
@@ -71,6 +71,10 @@ type kafkaAsyncProducer struct {
 func (q *Kafka) Setup(url string) error {
 	q.Brokers = strings.Split(url, ",")
 	return nil
+}
+
+func (q *Kafka) Conn() (interface{}, error) {
+	return nil, fmt.Errorf("unsupported method")
 }
 
 func (q *Kafka) SetLogger(l logger, level LogLevel) {}
@@ -106,7 +110,7 @@ func (q *Kafka) NewConsumer(v interface{}) (Consumer, error) {
 			return nil, err
 		}
 
-		c := &kafkaGroupConsumer{ConsumerGroup: cg}
+		c := &kafkaGroupConsumer{consumer: cg}
 		q.closers = append(q.closers, c)
 
 		return c, nil
@@ -117,7 +121,7 @@ func (q *Kafka) NewConsumer(v interface{}) (Consumer, error) {
 	if err != nil {
 		return nil, err
 	}
-	sc := &kafkaSingleConsumer{Consumer: c}
+	sc := &kafkaSingleConsumer{consumer: c}
 
 	partitions, err := args.getPartitions(c)
 	if err != nil {
@@ -155,9 +159,9 @@ func (q *Kafka) NewProducer(v interface{}) (Producer, error) {
 		}
 
 		p := &kafkaSyncProducer{
-			SyncProducer: producer,
-			topic:        args.Topic,
-			partition:    args.Partition,
+			producer:  producer,
+			topic:     args.Topic,
+			partition: args.Partition,
 		}
 		q.closers = append(q.closers, p)
 
@@ -170,13 +174,17 @@ func (q *Kafka) NewProducer(v interface{}) (Producer, error) {
 	}
 
 	p := &kafkaAsyncProducer{
-		AsyncProducer: producer,
-		topic:         args.Topic,
-		partition:     args.Partition,
+		producer:  producer,
+		topic:     args.Topic,
+		partition: args.Partition,
 	}
 	q.closers = append(q.closers, p)
 
 	return p, nil
+}
+
+func (c *kafkaSingleConsumer) Consumer() (interface{}, error) {
+	return c.consumer, nil
 }
 
 func (c *kafkaSingleConsumer) BindRecvChan(messages chan<- *Message) error {
@@ -210,7 +218,7 @@ func (c *kafkaSingleConsumer) BindRecvChan(messages chan<- *Message) error {
 }
 
 func (c *kafkaSingleConsumer) Close() error {
-	if c.Consumer == nil {
+	if c.consumer == nil {
 		return nil
 	}
 
@@ -224,14 +232,16 @@ func (c *kafkaSingleConsumer) Close() error {
 	}
 	log.Println("close partition consumers")
 
-	if err := c.Consumer.Close(); err != nil {
+	if err := c.consumer.Close(); err != nil {
 		return nil
 	}
 	log.Println("close single consumer")
 
 	return nil
 }
-
+func (c *kafkaGroupConsumer) Consumer() (interface{}, error) {
+	return c.consumer, nil
+}
 func (c *kafkaGroupConsumer) BindRecvChan(messages chan<- *Message) error {
 	go func() {
 		if c.quit == nil {
@@ -241,9 +251,9 @@ func (c *kafkaGroupConsumer) BindRecvChan(messages chan<- *Message) error {
 	GroupConsumeLoop:
 		for {
 			select {
-			case m := <-c.Messages():
+			case m := <-c.consumer.Messages():
 				messages <- &Message{Body: m.Value, Origin: m}
-			case err := <-c.Errors():
+			case err := <-c.consumer.Errors():
 				log.Fatalln(err)
 			case <-c.quit:
 				break GroupConsumeLoop
@@ -262,9 +272,9 @@ func (c *kafkaGroupConsumer) Subscribe(handler func(*Message)) error {
 	GroupSubscribeLoop:
 		for {
 			select {
-			case m := <-c.Messages():
+			case m := <-c.consumer.Messages():
 				handler(&Message{Body: m.Value, Origin: m})
-			case err := <-c.Errors():
+			case err := <-c.consumer.Errors():
 				log.Fatalln(err)
 			case <-c.quit:
 				break GroupSubscribeLoop
@@ -275,19 +285,23 @@ func (c *kafkaGroupConsumer) Subscribe(handler func(*Message)) error {
 }
 
 func (c *kafkaGroupConsumer) Close() error {
-	if c.ConsumerGroup == nil {
+	if c.consumer == nil {
 		return nil
 	}
 
 	c.quit <- struct{}{}
 	log.Println("break consume loop")
 
-	if err := c.ConsumerGroup.Close(); err != nil {
+	if err := c.consumer.Close(); err != nil {
 		return err
 	}
 	log.Println("close group consumer")
 
 	return nil
+}
+
+func (p *kafkaSyncProducer) Producer() (interface{}, error) {
+	return p.producer, nil
 }
 
 func (p *kafkaSyncProducer) BindSendChan(messages <-chan []byte) error {
@@ -309,7 +323,7 @@ func (p *kafkaSyncProducer) BindSendChan(messages <-chan []byte) error {
 
 				message.Value = sarama.ByteEncoder(body)
 
-				partition, offset, err := p.SendMessage(message)
+				partition, offset, err := p.producer.SendMessage(message)
 				if err != nil {
 					log.Fatalf("[Error]%v\n", err)
 				}
@@ -322,7 +336,7 @@ func (p *kafkaSyncProducer) BindSendChan(messages <-chan []byte) error {
 }
 
 func (p *kafkaSyncProducer) Close() error {
-	if p.SyncProducer == nil {
+	if p.producer == nil {
 		return nil
 	}
 
@@ -330,13 +344,16 @@ func (p *kafkaSyncProducer) Close() error {
 		p.quit <- struct{}{}
 	}
 
-	if err := p.SyncProducer.Close(); err != nil {
+	if err := p.producer.Close(); err != nil {
 		return err
 	}
 
 	return nil
 }
 
+func (p *kafkaAsyncProducer) Producer() (interface{}, error) {
+	return p.producer, nil
+}
 func (p *kafkaAsyncProducer) BindSendChan(messages <-chan []byte) error {
 	go func() {
 		if p.quit == nil {
@@ -355,8 +372,8 @@ func (p *kafkaAsyncProducer) BindSendChan(messages <-chan []byte) error {
 				}
 
 				message.Value = sarama.ByteEncoder(body)
-				p.AsyncProducer.Input() <- message
-			case err := <-p.AsyncProducer.Errors():
+				p.producer.Input() <- message
+			case err := <-p.producer.Errors():
 				log.Fatalln("Failed to produce message", err)
 			}
 		}
@@ -365,7 +382,7 @@ func (p *kafkaAsyncProducer) BindSendChan(messages <-chan []byte) error {
 }
 
 func (p *kafkaAsyncProducer) Close() error {
-	if p.AsyncProducer == nil {
+	if p.producer == nil {
 		return nil
 	}
 
@@ -373,7 +390,7 @@ func (p *kafkaAsyncProducer) Close() error {
 		p.quit <- struct{}{}
 	}
 
-	if err := p.AsyncProducer.Close(); err != nil {
+	if err := p.producer.Close(); err != nil {
 		return err
 	}
 
