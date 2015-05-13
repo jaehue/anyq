@@ -73,6 +73,8 @@ func (q *Kafka) Setup(url string) error {
 	return nil
 }
 
+func (q *Kafka) SetLogger(l logger, level LogLevel) {}
+
 func (q *Kafka) Close() error {
 	for _, c := range q.closers {
 		if err := c.Close(); err != nil {

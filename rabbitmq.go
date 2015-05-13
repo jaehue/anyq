@@ -62,6 +62,8 @@ func (q *Rabbitmq) Setup(url string) error {
 	return nil
 }
 
+func (q *Rabbitmq) SetLogger(l logger, level LogLevel) {}
+
 func (q *Rabbitmq) Close() error {
 	for _, c := range q.closers {
 		c.Close()

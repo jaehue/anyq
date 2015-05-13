@@ -78,6 +78,8 @@ func (q *Nats) Setup(url string) error {
 	return nil
 }
 
+func (q *Nats) SetLogger(l logger, level LogLevel) {}
+
 func (q *Nats) Close() error {
 	q.Conn.Close()
 	log.Printf("NATS shutdown OK")

@@ -21,6 +21,7 @@ type Queuer interface {
 	Setup(string) error
 	NewConsumer(args interface{}) (Consumer, error)
 	NewProducer(args interface{}) (Producer, error)
+	SetLogger(logger, LogLevel)
 	closer
 }
 
@@ -35,8 +36,23 @@ type Producer interface {
 	closer
 }
 
+// LogLevel specifies the severity of a given log message
+type LogLevel int
+
+// Log levels
+const (
+	LogLevelDebug LogLevel = iota
+	LogLevelInfo
+	LogLevelWarning
+	LogLevelError
+)
+
 type closer interface {
 	Close() error
+}
+
+type logger interface {
+	Output(calldepth int, s string) error
 }
 
 func Register(name string, q Queuer) {

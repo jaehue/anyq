@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/bitly/go-nsq"
 	"log"
+	"sync"
 )
 
 func init() {
@@ -11,8 +12,11 @@ func init() {
 }
 
 type Nsq struct {
-	url     string
-	closers []closer
+	url      string
+	closers  []closer
+	logger   logger
+	logLvl   LogLevel
+	logGuard sync.RWMutex
 }
 
 type NsqConsumerArgs struct {
@@ -37,6 +41,14 @@ func (q *Nsq) Setup(url string) error {
 	return nil
 }
 
+func (q *Nsq) SetLogger(l logger, level LogLevel) {
+	q.logGuard.Lock()
+	defer q.logGuard.Unlock()
+
+	q.logger = l
+	q.logLvl = level
+}
+
 func (q *Nsq) NewConsumer(v interface{}) (Consumer, error) {
 	args, ok := v.(NsqConsumerArgs)
 	if !ok {
@@ -46,6 +58,9 @@ func (q *Nsq) NewConsumer(v interface{}) (Consumer, error) {
 	c, err := nsq.NewConsumer(args.Topic, args.Channel, nsq.NewConfig())
 	if err != nil {
 		return nil, err
+	}
+	if q.logger != nil {
+		c.SetLogger(q.logger, nsq.LogLevel(q.logLvl))
 	}
 	consumer := &nsqConsumer{c, q.url}
 	q.closers = append(q.closers, consumer)
@@ -61,6 +76,9 @@ func (q *Nsq) NewProducer(v interface{}) (Producer, error) {
 	p, err := nsq.NewProducer(q.url, nsq.NewConfig())
 	if err != nil {
 		return nil, err
+	}
+	if q.logger != nil {
+		p.SetLogger(q.logger, nsq.LogLevel(q.logLvl))
 	}
 
 	producer := &nsqProducer{p, args.Topic}
