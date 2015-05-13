@@ -1,39 +1,28 @@
 package main
 
 import (
-	"github.com/jaehue/qlib"
+	"github.com/jaehue/anyq"
 	"io/ioutil"
 	"log"
 	"testing"
 )
 
-func BenchmarkNsqPubsub(b *testing.B) {
-	log.SetOutput(ioutil.Discard)
-
-	q, err := qlib.Setup("nsq", "192.168.81.43:4150")
-	if err != nil {
-		b.Error(err)
-	}
-
-	pubsubBenchmark(b, q, qlib.NsqProduceArgs{Topic: "test"}, qlib.NsqConsumeArgs{Topic: "test", Channel: "qlib"})
-}
-
 func BenchmarkNsqProduce(b *testing.B) {
 	log.SetOutput(ioutil.Discard)
 
-	q, err := qlib.Setup("nsq", "192.168.81.43:4150")
+	q, err := anyq.Setup("nsq", "192.168.81.43:4150")
 	if err != nil {
 		b.Error(err)
 	}
-	produceBenchmark(b, q, qlib.NsqProduceArgs{Topic: "test"})
+	produceBenchmark(b, q, anyq.NsqProducerArgs{Topic: "test"})
 }
 
 func BenchmarkNsqConsume(b *testing.B) {
 	log.SetOutput(ioutil.Discard)
 
-	q, err := qlib.Setup("nsq", "192.168.81.43:4150")
+	q, err := anyq.Setup("nsq", "192.168.81.43:4150")
 	if err != nil {
 		b.Error(err)
 	}
-	consumeBenchmark(b, q, qlib.NsqConsumeArgs{Topic: "test", Channel: "qlib"})
+	pubsubBenchmark(b, q, anyq.NsqProducerArgs{Topic: "test"}, anyq.NsqConsumerArgs{Topic: "test", Channel: "anyq"})
 }
