@@ -19,6 +19,7 @@ type Message struct {
 
 type Queuer interface {
 	Setup(string) error
+	Conn() (interface{}, error)
 	NewConsumer(args interface{}) (Consumer, error)
 	NewProducer(args interface{}) (Producer, error)
 	SetLogger(logger, LogLevel)
@@ -26,11 +27,13 @@ type Queuer interface {
 }
 
 type Consumer interface {
+	Consumer() (interface{}, error)
 	BindRecvChan(messages chan<- *Message) error
 	closer
 }
 
 type Producer interface {
+	Producer() (interface{}, error)
 	BindSendChan(messages <-chan []byte) error
 	// Publish(message *Message) error
 	closer
