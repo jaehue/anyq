@@ -1,4 +1,4 @@
-# AnyQ 
+# AnyQ
 [![GoDoc](https://godoc.org/github.com/jaehue/anyq?status.svg)](https://godoc.org/github.com/jaehue/anyq)
 
 
@@ -6,16 +6,16 @@ This is queue library wrapper for widely popular queues.
 AnyQ provide one way to handle various queues.
 
 Supporting Queues
-- rabbitmq  
+- RabbitMQ  
   https://www.rabbitmq.com
-- kafka  
+- Kafka  
   https://kafka.apache.org
-- nsq  
+- NSQ  
   http://nsq.io
-- nats  
+- NATS  
   http://nats.io
 
-## Usage
+## Basic usage
 
 Go get:
 
@@ -70,6 +70,61 @@ sendCh <- []byte("test message")
 Close:
 ```
 q.Close()
+```
+
+## Advanced usage
+
+### 1. Optional setup function
+
+#### set QoS and Exchange of RabbitMQ
+
+```
+setQos := func(q *anyq.Rabbitmq) {
+        if err := q.Qos(100, 0, false); err != nil {
+                log.Fatal(err)
+        }
+}
+
+setExchange := func(q *anyq.Rabbitmq) {
+        log.Println("declaring Exchange: ", ex)
+        if err := q.ExchangeDeclare(ex, "direct", false, false, false, false, nil); err != nil {
+                log.Fatal(err)
+        }
+        log.Println("declared Exchange")
+}
+
+q, err := anyq.New("rabbitmq", "amqp://guest:guest@127.0.0.1:5672/", setQos, setExchange)
+```
+
+#### set zookeeper urls of Kafka
+
+```
+q, err := anyq.New("kafka", *brokerList, func(q *anyq.Kafka) {
+        q.Zookeepers = strings.Split(*zookeeper, ",")
+})
+```
+
+### 2. Retrieve original conn object
+
+```
+q, err := anyq.New("nats", "nats://127.0.0.1:4222")
+if err != nil {
+        panic(err)
+}
+
+conn, err := q.Conn()
+if err != nil {
+        b.Error(err)
+}
+natsConn, ok := conn.(*nats.Conn)
+if !ok {
+        log.Fatalf("invalid conn type(%T)\n", conn)
+}
+
+natsConn.Subscribe("test", func(m *nats.Msg) {
+		natsConn.Publish(m.Reply, m.Data)
+		log.Println("[receive and reply]", string(m.Data))
+	})
 ```
 
 ## Examples
