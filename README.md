@@ -55,7 +55,7 @@ Consume:
 recvCh := make(chan *anyq.Message, 256)
 c.BindRecvChan(recvCh)
 for m := range recvCh {
-  fmt.Println("[receive]", string(m.Body))
+	fmt.Println("[receive]", string(m.Body))
 }
 ```
 
@@ -80,17 +80,17 @@ set QoS and Exchange of RabbitMQ
 
 ```
 setQos := func(q *anyq.Rabbitmq) {
-        if err := q.Qos(100, 0, false); err != nil {
-                log.Fatal(err)
-        }
+	if err := q.Qos(100, 0, false); err != nil {
+		log.Fatal(err)
+	}
 }
 
 setExchange := func(q *anyq.Rabbitmq) {
-        log.Println("declaring Exchange: ", ex)
-        if err := q.ExchangeDeclare(ex, "direct", false, false, false, false, nil); err != nil {
-                log.Fatal(err)
-        }
-        log.Println("declared Exchange")
+	log.Println("declaring Exchange: ", ex)
+	if err := q.ExchangeDeclare(ex, "direct", false, false, false, false, nil); err != nil {
+		log.Fatal(err)
+	}
+	log.Println("declared Exchange")
 }
 
 q, err := anyq.New("rabbitmq", "amqp://guest:guest@127.0.0.1:5672/", setQos, setExchange)
@@ -100,7 +100,7 @@ set zookeeper urls of Kafka
 
 ```
 q, err := anyq.New("kafka", *brokerList, func(q *anyq.Kafka) {
-        q.Zookeepers = strings.Split(*zookeeper, ",")
+	q.Zookeepers = strings.Split(*zookeeper, ",")
 })
 ```
 
@@ -109,22 +109,22 @@ q, err := anyq.New("kafka", *brokerList, func(q *anyq.Kafka) {
 ```
 q, err := anyq.New("nats", "nats://127.0.0.1:4222")
 if err != nil {
-        panic(err)
+	panic(err)
 }
 
 conn, err := q.Conn()
 if err != nil {
-        b.Error(err)
+	b.Error(err)
 }
 natsConn, ok := conn.(*nats.Conn)
 if !ok {
-        log.Fatalf("invalid conn type(%T)\n", conn)
+	log.Fatalf("invalid conn type(%T)\n", conn)
 }
 
 natsConn.Subscribe("test", func(m *nats.Msg) {
-		natsConn.Publish(m.Reply, m.Data)
-		log.Println("[receive and reply]", string(m.Data))
-	})
+	natsConn.Publish(m.Reply, m.Data)
+	log.Println("[receive and reply]", string(m.Data))
+})
 ```
 
 ## Examples
