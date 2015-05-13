@@ -74,9 +74,9 @@ q.Close()
 
 ## Advanced usage
 
-### 1. Optional setup function
+#### Optional setup function
 
-#### set QoS and Exchange of RabbitMQ
+set QoS and Exchange of RabbitMQ
 
 ```
 setQos := func(q *anyq.Rabbitmq) {
@@ -96,7 +96,7 @@ setExchange := func(q *anyq.Rabbitmq) {
 q, err := anyq.New("rabbitmq", "amqp://guest:guest@127.0.0.1:5672/", setQos, setExchange)
 ```
 
-#### set zookeeper urls of Kafka
+set zookeeper urls of Kafka
 
 ```
 q, err := anyq.New("kafka", *brokerList, func(q *anyq.Kafka) {
@@ -104,7 +104,7 @@ q, err := anyq.New("kafka", *brokerList, func(q *anyq.Kafka) {
 })
 ```
 
-### 2. Retrieve original conn object
+#### Retrieve original conn object
 
 ```
 q, err := anyq.New("nats", "nats://127.0.0.1:4222")
