@@ -128,14 +128,28 @@ natsConn.Subscribe("test", func(m *nats.Msg) {
 
 ## Test
 
-Unit test:
+#### Prerequisite
+
+You should install and run each queues
+
+- RabbitMQ  
+https://www.rabbitmq.com/download.html
+- Kafka  
+https://kafka.apache.org/documentation.html#quickstart
+- NSQ  
+http://nsq.io/deployment/installing.html
+- NATS  
+`$ go get github.com/apcera/gnatsd`  
+`$ gnatsd`
+
+#### Unit test
 
 ```
 $ go test github.com/jaehue/anyq
 ok  	github.com/jaehue/anyq	1.136s
 ```
 
-Benchmark test:
+#### Benchmark test
 
 ```
 $ go test github.com/jaehue/anyq/benchmark -test.bench=. -test.benchmem
@@ -168,7 +182,7 @@ ok  	github.com/jaehue/anyq/benchmark	23.944s
 - nsq  
   [nsq-consumer](https://github.com/jaehue/anyq/tree/master/example/nsq-consumer)  
   [nsq-producer](https://github.com/jaehue/anyq/tree/master/example/nsq-producer)  
-  
+
 ## Contributing
 
   1. Fork it ( https://github.com/jaehue/anyq/fork )
