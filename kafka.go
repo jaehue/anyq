@@ -253,6 +253,9 @@ func (c *kafkaGroupConsumer) BindRecvChan(messages chan<- *Message) error {
 			select {
 			case m := <-c.consumer.Messages():
 				messages <- &Message{Body: m.Value, Origin: m}
+				if err := c.consumer.CommitUpto(m); err != nil {
+					log.Println("Consume commit error: ", err)
+				}
 			case err := <-c.consumer.Errors():
 				log.Fatalln(err)
 			case <-c.quit:
@@ -274,6 +277,9 @@ func (c *kafkaGroupConsumer) Subscribe(handler func(*Message)) error {
 			select {
 			case m := <-c.consumer.Messages():
 				handler(&Message{Body: m.Value, Origin: m})
+				if err := c.consumer.CommitUpto(m); err != nil {
+					log.Println("Consume commit error: ", err)
+				}
 			case err := <-c.consumer.Errors():
 				log.Fatalln(err)
 			case <-c.quit:
