@@ -11,9 +11,6 @@ package anyq
 
 import (
 	"fmt"
-	"log"
-	"os"
-	"os/signal"
 	"reflect"
 )
 
@@ -116,21 +113,6 @@ func New(qname, url string, setupFn ...interface{}) (Queuer, error) {
 		fn := reflect.ValueOf(f)
 		fn.Call([]reflect.Value{reflect.ValueOf(q)})
 	}
-
-	go func() {
-		signals := make(chan os.Signal, 1)
-		signal.Notify(signals, os.Interrupt)
-
-		<-signals
-		log.Print("cleaning... ")
-		if err := q.Close(); err != nil {
-			log.Fatalln("cleaning error: ", err)
-		} else {
-
-			log.Println("clean complate")
-		}
-		os.Exit(0)
-	}()
 
 	return q, nil
 
