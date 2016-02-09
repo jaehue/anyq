@@ -190,3 +190,6 @@ ok  	github.com/jaehue/anyq/benchmark	23.944s
   3. Commit your changes (`git commit -am 'Add some feature'`)
   4. Push to the branch (`git push origin my-new-feature`)
   5. Create a new Pull Request
+
+## License
+MIT (see [LICENSE](LICENSE) file)
