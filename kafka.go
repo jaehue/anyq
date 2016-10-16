@@ -2,12 +2,13 @@ package anyq
 
 import (
 	"fmt"
-	"github.com/wvanbergen/kafka/consumergroup"
-	"gopkg.in/Shopify/sarama.v1"
 	"log"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Shopify/sarama"
+	"github.com/wvanbergen/kafka/consumergroup"
 )
 
 func init() {
